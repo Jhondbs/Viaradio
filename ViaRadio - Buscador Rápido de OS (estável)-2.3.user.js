@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ViaRadio - Buscador Rápido de OS (estável)
+// @name         ViaRadio - Buscador Rápido de OS (com Visualizador) - Minimal
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
@@ -52,6 +52,7 @@ const modalCSS = `
         display: flex;
         align-items: center;
         gap: 12px;
+        flex-shrink: 0;
     }
     .hud-modal-header:active { cursor: grabbing; }
     .hud-modal-header span {
@@ -100,11 +101,20 @@ const modalCSS = `
         flex: 2;
         min-width: 360px;
         display: flex;
+        flex-direction: column; /* (NOVO) Modificado para empilhar imagem e toggle */
         align-items: center;
         justify-content: center;
         padding: 18px;
         background: linear-gradient(180deg, #ffffff, #fcfdff);
         overflow: auto;
+    }
+    .modal-image-pane-display { /* (NOVO) Wrapper para a imagem */
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
     }
     .modal-image-pane img {
         max-width: 100%;
@@ -115,7 +125,6 @@ const modalCSS = `
         background: #fff;
     }
 
-    /* --- (NOVO) Estilo para o placeholder da imagem --- */
     .modal-no-image-placeholder {
         display: flex;
         align-items: center;
@@ -129,7 +138,38 @@ const modalCSS = `
         border-radius: 6px;
         border: 2px dashed var(--border);
     }
-    /* --- Fim do Novo Estilo --- */
+
+    /* --- (NOVO) Estilos para o Toggle Switch --- */
+    .hud-map-toggle {
+        display: flex;
+        border-radius: 8px;
+        background: #f1f5f9;
+        padding: 5px;
+        margin-top: 15px;
+        flex-shrink: 0;
+    }
+    .hud-map-toggle button {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 16px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        transition: background .2s, color .2s, box-shadow .2s;
+    }
+    .hud-map-toggle button.active {
+        background: var(--panel);
+        color: var(--accent);
+        box-shadow: 0 4px 10px rgba(15,23,42,0.05);
+    }
+    .hud-map-toggle button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    /* --- Fim do CSS do Toggle --- */
 
     .modal-data-pane {
         flex: 1;
@@ -147,7 +187,7 @@ const modalCSS = `
         gap: 12px;
         display: flex;
         flex-direction: column;
-        flex-grow: 1; /* (NOVO) Faz o container crescer */
+        flex-grow: 1;
     }
 
     .data-item {
@@ -168,13 +208,6 @@ const modalCSS = `
         font-size: 14px;
         color: #0b1220;
         word-wrap: break-word;
-    }
-
-    .data-item-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 6px;
     }
 
     .data-item-copy-btn {
@@ -200,7 +233,7 @@ const modalCSS = `
         gap: 10px;
         align-items: center;
         justify-content: space-between;
-        flex-shrink: 0; /* (NOVO) Impede que o rodapé encolha */
+        flex-shrink: 0;
     }
     .hud-modal-actions .left, .hud-modal-actions .right { display:flex; gap:8px; align-items:center; }
 
@@ -236,6 +269,8 @@ const modalCSS = `
         .hud-modal-os-viewer { width: 95vw; height: 92vh; }
         .modal-image-pane { padding: 12px; }
         .data-items-container { padding: 12px; }
+        .hud-modal-content-wrapper { flex-direction: column; } /* (NOVO) Empilha em telas menores */
+        .modal-data-pane { border-left: none; border-top: 1px solid var(--border); max-height: 45%; }
     }
 `;
 /* --- Fim do CSS --- */
@@ -243,19 +278,19 @@ const modalCSS = `
 (function() {
     'use strict';
 
-    // Injeta estilo
     const styleEl = document.createElement('style');
     styleEl.textContent = modalCSS;
     document.head.appendChild(styleEl);
 
     let loadingToast = null;
-    let currentLinkElement = null;
+    let currentLinkElement = null; // Armazena o link <a> 'Viabilidade'
+    let installationLinkElement = null; // (NOVO) Armazena o link <a> 'Instalação'
 
     // Atalho: NumpadComma ou NumpadDecimal
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'NumpadComma' || e.code === 'NumpadDecimal') {
-            e.preventDefault();
-            triggerOSSearch();
+        if (e.code === 'NumpadComma') {
+         //   e.preventDefault();
+            //triggerOSSearch();
         }
     }, false);
 
@@ -264,52 +299,80 @@ const modalCSS = `
         const link = e.target.closest('a');
         if (link && link.href && link.href.includes('retornarMapaOrdemDeServico')) {
             e.preventDefault();
+
+            // (MODIFICADO) Guarda o link clicado (Viabilidade) e procura o de Instalação
             currentLinkElement = link;
-            await showOSModalForLink(link);
+            const td = currentLinkElement.closest('td');
+            installationLinkElement = null; // Reseta
+            if (td) {
+                // Procura o link de instalação na mesma célula
+                installationLinkElement = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
+            }
+
+            await showOSModalForLink(currentLinkElement, installationLinkElement);
         }
     }, true);
 
     /**
-     * (MODIFICADO) Função central para processar o clique no link da OS
+     * (MODIFICADO) Função central para processar o clique
+     * Agora aceita ambos os links
      */
-    async function showOSModalForLink(linkElement) {
-        if (!linkElement) return;
+    async function showOSModalForLink(viabilidadeLink, instalacaoLink) {
+        if (!viabilidadeLink) return;
 
-        let osNumber = null;
+        let osNumberViabilidade = null;
+        let osNumberInstalacao = null;
+
         try {
-            const url = new URL(linkElement.href, window.location.origin);
-            osNumber = url.searchParams.get('ordemdeservico');
+            const urlV = new URL(viabilidadeLink.href, window.location.origin);
+            osNumberViabilidade = urlV.searchParams.get('ordemdeservico');
+
+            if (instalacaoLink) {
+                const urlI = new URL(instalacaoLink.href, window.location.origin);
+                osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
+            }
         } catch (err) { /* ignore */ }
 
-        if (!osNumber) {
+        if (!osNumberViabilidade) {
             showToast("Não foi possível extrair o nº da OS do link.", "error");
             return;
         }
 
         let numeroCaixa = null;
-        const tr = linkElement.closest('tr');
+        const tr = viabilidadeLink.closest('tr');
         if (tr) {
             const fontTag = tr.querySelector('font[color="#0099FF"]');
             if (fontTag) numeroCaixa = fontTag.textContent.trim();
         }
 
-        const toast = showToast(`Buscando OS ${osNumber}…`, "loading");
+        const toast = showToast(`Buscando OS ${osNumberViabilidade}...`, "loading");
 
         try {
-            const osDataPromise = fetchOSData(osNumber);
+            // (MODIFICADO) Busca todos os 3 dados em paralelo
+            const osDataPromise = fetchOSData(osNumberViabilidade);
             const redePromise = numeroCaixa ? fetchRedeRadacct(numeroCaixa) : Promise.resolve(null);
+            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null);
 
-            const [jsonData, redeRadacct] = await Promise.all([osDataPromise, redePromise]);
+            const [jsonData, redeRadacct, jsonDataInstalacao] = await Promise.all([osDataPromise, redePromise, osInstalacaoDataPromise]);
             removeToast(toast);
 
-            // (MODIFICADO) Abre o modal desde que o jsonData exista
+            // Abre o modal desde que tenhamos os dados da OS principal
             if (jsonData) {
-                createImageModal(jsonData.imagem_mapa, osNumber, jsonData, numeroCaixa, redeRadacct, true);
+                createImageModal(
+                    jsonData.imagem_mapa,
+                    osNumberViabilidade,
+                    jsonData, // Dados da Viabilidade
+                    jsonDataInstalacao, // (NOVO) Dados da Instalação
+                    numeroCaixa,
+                    redeRadacct,
+                    true // Mostrar botões de navegação
+                );
             } else {
                  showToast("Nenhuma informação encontrada para esta OS.", "error");
-                 return; // Para a execução se o jsonData for nulo
+                 return;
             }
 
+            // A lógica de copiar permanece a mesma (baseada na OS de Viabilidade)
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
                 let out = `${coords.lat},${coords.lon}`;
@@ -326,7 +389,6 @@ const modalCSS = `
                 return;
             }
 
-            // Se chegamos aqui, o modal foi aberto mas não havia nada para copiar
             showToast("OS aberta (sem coordenadas ou link).", "success");
 
         } catch (err) {
@@ -336,8 +398,9 @@ const modalCSS = `
         }
     }
 
+
     /**
-     * (MODIFICADO) Pede o número da OS e inicia o processo (via Numpad)
+     * Pede o número da OS e inicia o processo (via Numpad)
      */
     async function triggerOSSearch() {
         const osNumber = prompt("Digite o número da OS:");
@@ -347,18 +410,19 @@ const modalCSS = `
         }
 
         loadingToast = showToast(`Buscando OS ${osNumber}…`, "loading");
-        currentLinkElement = null;
+        currentLinkElement = null; // Sem link de referência
+        installationLinkElement = null;
 
         try {
             const jsonData = await fetchOSData(osNumber.trim());
-            removeToast(loadingToast); // Remove o toast aqui
+            removeToast(loadingToast);
 
-            // (MODIFICADO) Abre o modal desde que o jsonData exista
             if (jsonData) {
-                createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, false);
+                // (MODIFICADO) Passa null para jsonDataInstalacao e false para nav buttons
+                createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, null, false);
             } else {
                 showToast("Nenhuma informação encontrada para esta OS.", "error");
-                return; // Para a execução se o jsonData for nulo
+                return;
             }
 
             const coords = extractCoordsFromJSON(jsonData);
@@ -385,7 +449,13 @@ const modalCSS = `
         }
     }
 
+    /**
+     * 2. Chama a API 'pegar_ordemdeservico_id.php' (API da OS)
+     */
     function fetchOSData(osNumber) {
+        // (NOVO) Retorna null se o osNumber for nulo (caso o link de instalação não exista)
+        if (!osNumber) return Promise.resolve(null);
+
         const url = `https://viaradio.jupiter.com.br/json/pegar_ordemdeservico_id.php?id=${osNumber}`;
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -406,7 +476,12 @@ const modalCSS = `
         });
     }
 
+    /**
+     * Chama a API 'pegar_usuarios_contrato.php' (API do Contrato)
+     */
     function fetchRedeRadacct(contratoNumber) {
+        if (!contratoNumber) return Promise.resolve(null); // (NOVO) Checagem de segurança
+
         const url = `https://viaradio.jupiter.com.br/json/pegar_usuarios_contrato.php?contrato=${contratoNumber}`;
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -431,6 +506,9 @@ const modalCSS = `
         });
     }
 
+    /**
+     * 3a. Extrai as coordenadas do JSON
+     */
     function extractCoordsFromJSON(data) {
         try {
             if (!data) return null;
@@ -442,6 +520,9 @@ const modalCSS = `
         return null;
     }
 
+    /**
+     * 3b. Extrai o link do mapa do JSON
+     */
     function extractLinkFromJSON(data) {
         try {
             if (!data) return null;
@@ -455,7 +536,8 @@ const modalCSS = `
         return null;
     }
 
-    // --- Toaster minimalista ---
+
+    // --- Funções de Notificação (Toast) ---
     function showToast(message, type = 'success') {
         const containerId = '__coords_toast_container';
         let container = document.getElementById(containerId);
@@ -475,10 +557,8 @@ const modalCSS = `
             });
             document.body.appendChild(container);
         }
-
         const toast = document.createElement('div');
         toast.textContent = message;
-
         let bgColor = '#10b981';
         let autoHide = true;
         switch (type) {
@@ -486,7 +566,6 @@ const modalCSS = `
             case 'loading': bgColor = 'linear-gradient(135deg,#60a5fa,#3b82f6)'; autoHide = false; break;
             default: bgColor = 'linear-gradient(135deg,#10b981,#059669)'; break;
         }
-
         Object.assign(toast.style, {
             transform: 'translateX(120%)',
             transition: 'transform 260ms cubic-bezier(.2,.9,.2,1), opacity 260ms ease',
@@ -504,12 +583,10 @@ const modalCSS = `
             overflow: 'hidden',
             textOverflow: 'ellipsis'
         });
-
         container.appendChild(toast);
         void toast.offsetWidth;
         toast.style.transform = 'translateX(0)';
         toast.style.opacity = '1';
-
         if (autoHide) {
             setTimeout(() => removeToast(toast), 2200);
         }
@@ -523,12 +600,27 @@ const modalCSS = `
         setTimeout(() => toast.remove(), 280);
     }
 
-    // --- Modal visualizador ---
-    function createImageModal(base64Image, osNumber, jsonData, numeroCaixa, redeRadacct, showNavButtons = false) {
+    // --- (MODIFICADO) Modal visualizador ---
+    function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false) {
         const oldModal = document.getElementById('hud-os-image-modal');
         if (oldModal) oldModal.remove();
 
-        // --- Parse de todos os dados para o modal ---
+        // --- Armazena os dados buscados para o toggle ---
+        const dataStore = {
+            viabilidade: {
+                jsonData: jsonData,
+                image: base64Image, // Pode ser null
+                os: osNumber
+            },
+            instalacao: {
+                jsonData: jsonDataInstalacao, // Pode ser null
+                image: jsonDataInstalacao ? jsonDataInstalacao.imagem_mapa : null,
+                os: jsonDataInstalacao ? jsonDataInstalacao.id : null
+            }
+        };
+        // --- Fim do armaz. de dados ---
+
+        // --- Parse de todos os dados (para o painel da direita, que não muda) ---
         let cliente = "N/D";
         let contrato = numeroCaixa || "N/D";
         let mapa = osNumber || "N/D";
@@ -538,14 +630,13 @@ const modalCSS = `
         let coords = null;
         let coordsString = "N/D";
 
-        if (jsonData) {
+        if (jsonData) { // Usamos jsonData (viabilidade) como fonte principal para os dados da direita
             cliente = jsonData.nomecliente || "N/D";
             coords = extractCoordsFromJSON(jsonData);
             if (coords) coordsString = `${coords.lat},${coords.lon}`;
             try {
                 const dadosMapa = JSON.parse(jsonData.dados_mapa || "{}");
                 if (dadosMapa.terminalSelecionado) caixa = dadosMapa.terminalSelecionado.replace(/PT/i, '').trim();
-
                 if (dadosMapa.descricaoRede) {
                     const descRede = dadosMapa.descricaoRede.trim();
                     const partesRede = descRede.split(' - ');
@@ -564,7 +655,6 @@ const modalCSS = `
         modal.className = 'hud-modal-os-viewer';
         modal.style.zIndex = '2147483645';
 
-        const imgSrc = `data:image/png;base64,${base64Image}`;
         const titleText = redeRadacct ? `OS: ${osNumber} | Rede: ${redeRadacct}` : `Imagem do Mapa - OS: ${osNumber}`;
 
         const navHtml = showNavButtons ? `
@@ -574,11 +664,18 @@ const modalCSS = `
             </div>
         ` : '';
 
-        // (Placeholder de imagem caso base64Image seja nulo)
-        const imagePaneHtml = base64Image
-            ? `<div class="modal-image-pane"><img src="${imgSrc}" alt="Mapa OS ${osNumber}"></div>`
-            : `<div class="modal-image-pane"><div class="modal-no-image-placeholder">ORDEM SEM MAPA ANEXADO</div></div>`;
+        // (NOVO) Define o HTML do painel da imagem dinamicamente (começa com Viabilidade)
+        const imagePaneHtml = dataStore.viabilidade.image
+            ? `<div class="modal-image-pane-display"><img id="hud-map-image-element" src="data:image/png;base64,${dataStore.viabilidade.image}" alt="Mapa OS ${osNumber}"></div>`
+            : `<div class="modal-image-pane-display"><div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div></div>`;
 
+        // (NOVO) Cria o HTML do Toggle
+        const toggleHtml = `
+            <div class="hud-map-toggle">
+                <button id="hud-toggle-viabilidade" class="active">Viabilidade</button>
+                <button id="hud-toggle-instalacao">Instalação</button>
+            </div>
+        `;
 
         modal.innerHTML = `
             <div class="hud-modal-header">
@@ -588,7 +685,9 @@ const modalCSS = `
                 </div>
             </div>
             <div class="hud-modal-content-wrapper">
-                ${imagePaneHtml}
+                <div class="modal-image-pane">
+                    ${imagePaneHtml}
+                    ${toggleHtml} </div>
                 <div class="modal-data-pane">
                     <div class="data-items-container">
                         <div class="data-item"><div class="data-item-label">Cliente</div><div class="data-item-value">${cliente}</div></div>
@@ -620,37 +719,55 @@ const modalCSS = `
 
         document.body.appendChild(modal);
 
-        // --- (MODIFICADO) Adiciona Listeners ---
+        // --- (NOVO) Lógica do Toggle Switch ---
+        const btnToggleViabilidade = modal.querySelector('#hud-toggle-viabilidade');
+        const btnToggleInstalacao = modal.querySelector('#hud-toggle-instalacao');
+        const imageDisplayContainer = modal.querySelector('.modal-image-pane-display');
 
-        // (NOVO) Função unificada de fecho
-        // A flag 'isNavigating' impede que o currentLinkElement seja limpo durante a navegação
+        // Função para trocar a imagem
+        const setMapImage = (type) => {
+            const imageData = (type === 'viabilidade') ? dataStore.viabilidade.image : dataStore.instalacao.image;
+            const osNum = (type === 'viabilidade') ? dataStore.viabilidade.os : dataStore.instalacao.os;
+
+            if (imageData) {
+                imageDisplayContainer.innerHTML = `<img id="hud-map-image-element" src="data:image/png;base64,${imageData}" alt="Mapa OS ${osNum}">`;
+            } else {
+                imageDisplayContainer.innerHTML = `<div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div>`;
+            }
+
+            // Atualiza o estado ativo dos botões
+            btnToggleViabilidade.classList.toggle('active', type === 'viabilidade');
+            btnToggleInstalacao.classList.toggle('active', type === 'instalacao');
+        };
+
+        btnToggleViabilidade.addEventListener('click', () => setMapImage('viabilidade'));
+        btnToggleInstalacao.addEventListener('click', () => setMapImage('instalacao'));
+
+        // Desativa o botão de instalação se não houver dados
+        if (!dataStore.instalacao.jsonData) {
+            btnToggleInstalacao.disabled = true;
+        }
+        // Se a busca foi pelo Numpad, esconde o toggle
+        if (!showNavButtons) {
+            modal.querySelector('.hud-map-toggle').style.display = 'none';
+        }
+        // --- Fim da Lógica do Toggle ---
+
+
+        // --- Listeners de Fecho, Cópia, Navegação e Drag ---
         const closeModal = (isNavigating = false) => {
             modal.remove();
             if (!isNavigating) {
-                currentLinkElement = null; // SÓ limpa se não estiver a navegar
+                currentLinkElement = null;
+                installationLinkElement = null;
             }
             document.removeEventListener('keydown', handleEscKey);
         };
-
-        // Listener para a tecla ESC
-        const handleEscKey = (e) => {
-            if (e.key === 'Escape') {
-                closeModal(false); // Fechar com ESC não é navegar
-            }
-        };
-
-        // Listener do botão Fechar
+        const handleEscKey = (e) => { if (e.key === 'Escape') closeModal(false); };
         modal.querySelector('#hud-modal-close-btn').addEventListener('click', () => closeModal(false));
-
-        // Adiciona o listener do ESC ao documento
         document.addEventListener('keydown', handleEscKey);
 
-        // --- Fim da Lógica de Fecho ---
-
-
-        // Copy coords
         const copyBtn = modal.querySelector('#hud-copy-coords-btn');
-        const coordsValueEl = modal.querySelector('#hud-coords-value');
         if (coords && coordsString !== "N/D") {
             copyBtn.addEventListener('click', () => {
                 GM_setClipboard(coordsString);
@@ -661,13 +778,10 @@ const modalCSS = `
         } else {
             copyBtn.textContent = 'N/D';
             copyBtn.disabled = true;
-            copyBtn.style.opacity = 0.6;
-            copyBtn.style.cursor = 'not-allowed';
         }
 
-        // Emitir ordem
         const btnEmitirOrdem = modal.querySelector('#hud-emitir-ordem-btn');
-        if (currentLinkElement) { // (CORRIGIDO) Esta lógica agora funciona
+        if (currentLinkElement) { // Só ativa se foi um clique
             btnEmitirOrdem.addEventListener('click', () => {
                 try {
                     window.open(currentLinkElement.href, '_blank');
@@ -677,29 +791,32 @@ const modalCSS = `
             btnEmitirOrdem.disabled = true;
         }
 
-        // Navegação
         if (showNavButtons) {
             const btnPrev = modal.querySelector('#hud-nav-prev');
             const btnNext = modal.querySelector('#hud-nav-next');
             const currentRow = currentLinkElement ? currentLinkElement.closest('tr') : null;
 
             const prevRow = currentRow ? currentRow.previousElementSibling : null;
-            if (prevRow && prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]')) {
+            const prevLink = prevRow ? prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
+            if (prevLink) {
                 btnPrev.addEventListener('click', () => {
-                    const prevLink = prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]');
+                    const prevInstallationLink = Array.from(prevRow.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
                     currentLinkElement = prevLink;
-                    closeModal(true); // (MODIFICADO) Passa 'true' para não limpar o link
-                    showOSModalForLink(prevLink);
+                    installationLinkElement = prevInstallationLink;
+                    closeModal(true);
+                    showOSModalForLink(prevLink, prevInstallationLink);
                 });
             } else btnPrev.disabled = true;
 
             const nextRow = currentRow ? currentRow.nextElementSibling : null;
-            if (nextRow && nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]')) {
+            const nextLink = nextRow ? nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
+            if (nextLink) {
                 btnNext.addEventListener('click', () => {
-                    const nextLink = nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]');
+                    const nextInstallationLink = Array.from(nextRow.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
                     currentLinkElement = nextLink;
-                    closeModal(true); // (MODIFICADO) Passa 'true' para não limpar o link
-                    showOSModalForLink(nextLink);
+                    installationLinkElement = nextInstallationLink;
+                    closeModal(true);
+                    showOSModalForLink(nextLink, nextInstallationLink);
                 });
             } else btnNext.disabled = true;
         }
@@ -708,7 +825,6 @@ const modalCSS = `
         const header = modal.querySelector('.hud-modal-header');
         let isDragging = false;
         let offsetX = 0, offsetY = 0;
-
         header.addEventListener('mousedown', (e) => {
             isDragging = true;
             const rect = modal.getBoundingClientRect();
