@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         ViaRadio - Buscador Rápido de OS (com Visualizador) - Minimal
+// @name         ViaRadio - Buscador Rápido de OS
 // @namespace    http://tampermonkey.net/
 // @version      2.4
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
