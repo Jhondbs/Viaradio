@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Buscador Rápido de OS
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.4.1
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
@@ -539,58 +539,7 @@ const modalCSS = `
 
     // --- Funções de Notificação (Toast) ---
     function showToast(message, type = 'success') {
-        const containerId = '__coords_toast_container';
-        let container = document.getElementById(containerId);
-        if (!container) {
-            container = document.createElement('div');
-            container.id = containerId;
-            Object.assign(container.style, {
-                position: 'fixed',
-                top: '14px',
-                right: '14px',
-                zIndex: 2147483647,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                pointerEvents: 'none',
-                fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial'
-            });
-            document.body.appendChild(container);
-        }
-        const toast = document.createElement('div');
-        toast.textContent = message;
-        let bgColor = '#10b981';
-        let autoHide = true;
-        switch (type) {
-            case 'error': bgColor = 'linear-gradient(135deg,#ef4444,#dc2626)'; break;
-            case 'loading': bgColor = 'linear-gradient(135deg,#60a5fa,#3b82f6)'; autoHide = false; break;
-            default: bgColor = 'linear-gradient(135deg,#10b981,#059669)'; break;
-        }
-        Object.assign(toast.style, {
-            transform: 'translateX(120%)',
-            transition: 'transform 260ms cubic-bezier(.2,.9,.2,1), opacity 260ms ease',
-            opacity: '0',
-            pointerEvents: 'auto',
-            background: bgColor,
-            color: '#fff',
-            padding: '10px 14px',
-            borderRadius: '10px',
-            boxShadow: '0 8px 24px rgba(2,6,23,0.08)',
-            fontSize: '13px',
-            lineHeight: '1.2',
-            maxWidth: '420px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-        });
-        container.appendChild(toast);
-        void toast.offsetWidth;
-        toast.style.transform = 'translateX(0)';
-        toast.style.opacity = '1';
-        if (autoHide) {
-            setTimeout(() => removeToast(toast), 2200);
-        }
-        return toast;
+        // Removido
     }
 
     function removeToast(toast) {
