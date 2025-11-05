@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      3.0
+// @version      3.1
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
@@ -125,31 +125,28 @@ const modalCSS = `
         background: #fff;
     }
 
-    /* (MODIFICADO) Estilos para a galeria de Anexos - adicionado justify-content: center */
     .anexos-gallery-container {
         width: 100%;
         height: 100%;
-        overflow-y: auto; /* Permite rolar os anexos */
+        overflow-y: auto;
         display: flex;
-        flex-wrap: wrap; /* Imagens quebram a linha */
+        flex-wrap: wrap;
         gap: 10px;
         padding: 10px;
-        background: #f8f9fa; /* Fundo leve */
+        background: #f8f9fa;
         border-radius: 6px;
-        align-content: flex-start; /* Alinha os itens no topo */
-        justify-content: center; /* (NOVO) Centraliza as imagens */
+        align-content: flex-start;
+        justify-content: center;
     }
     .anexos-gallery-container img {
-        /* Duas colunas com um espaço de 5px */
         width: calc(50% - 5px);
         height: auto;
-        object-fit: contain; /* 'contain' é melhor para ver a imagem toda */
+        object-fit: contain;
         border-radius: 6px;
         background: #fff;
         box-shadow: 0 4px 10px rgba(15,23,42,0.05);
         border: 1px solid var(--border);
     }
-    /* Em telas menores, passa para uma coluna */
     @media (max-width: 600px) {
          .anexos-gallery-container img {
             width: 100%;
@@ -191,7 +188,7 @@ const modalCSS = `
         cursor: pointer;
         transition: background .2s, color .2s, box-shadow .2s;
         flex: 1;
-        white-space: nowrap;
+        white-space: nowrap; /* Garante que "Anexos (X)" não quebre a linha */
     }
     .hud-map-toggle button.active {
         background: var(--panel);
@@ -201,20 +198,6 @@ const modalCSS = `
     .hud-map-toggle button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
-    }
-    /* (NOVO) Estilo para o contador */
-    .hud-map-toggle button .count {
-        background: var(--accent);
-        color: white;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 2px 6px;
-        border-radius: 999px;
-        min-width: 18px;
-        text-align: center;
-    }
-    .hud-map-toggle button:disabled .count {
-        background: var(--muted);
     }
 
     .modal-data-pane {
@@ -236,19 +219,31 @@ const modalCSS = `
         flex-grow: 1;
     }
 
-    /* Estilos para agrupar itens na mesma linha */
     .data-item-row {
         display: flex;
         flex-direction: row;
-        gap: 10px; /* Espaço entre os grupos */
+        gap: 10px;
         width: 100%;
     }
     .data-item-row .data-item {
-        flex: 1; /* Faz os itens dividirem o espaço igualmente */
-        min-width: 0; /* Ajuda o flexbox a encolher os itens */
+        flex: 1;
+        min-width: 0;
     }
     .data-item-row .data-item.full-width {
-        flex-basis: 100%; /* Para o item de Cliente e Localização */
+        flex-basis: 100%;
+    }
+
+    .data-item-copyable {
+        cursor: pointer;
+        transition: background .12s, box-shadow .12s, transform .05s;
+    }
+    .data-item-copyable:hover {
+        background: rgba(37, 99, 235, 0.05);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+    }
+    .data-item-copyable:active {
+        transform: translateY(1px);
+        background: rgba(37, 99, 235, 0.08);
     }
 
 
@@ -362,19 +357,6 @@ const modalCSS = `
             flex-wrap: wrap;
         }
     }
-
-    .data-item-copyable {
-        cursor: pointer;
-        transition: background .12s, box-shadow .12s, transform .05s;
-    }
-    .data-item-copyable:hover {
-        background: rgba(37, 99, 235, 0.05); /* Um leve tom azul no hover */
-        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
-    }
-    .data-item-copyable:active {
-        transform: translateY(1px); /* Efeito de clique */
-        background: rgba(37, 99, 235, 0.08);
-    }
 `;
 /* --- Fim do CSS --- */
 
@@ -402,38 +384,22 @@ const modalCSS = `
             e.preventDefault();
 
             currentLinkElement = link;
-            const td = currentLinkElement.closest('td');
             installationLinkElement = null;
-            if (td) {
-                installationLinkElement = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
-            }
 
-            await showOSModalForLink(currentLinkElement, installationLinkElement);
+            await showOSModalForLink(currentLinkElement);
         }
     }, true);
 
     /**
-     * Função central para processar o clique
+     * (MODIFICADO) Função central para processar o clique
      */
     async function showOSModalForLink(linkElement) {
         if (!linkElement) return;
 
         let osNumberViabilidade = null;
-        let osNumberInstalacao = null;
-
         try {
             const urlV = new URL(linkElement.href, window.location.origin);
             osNumberViabilidade = urlV.searchParams.get('ordemdeservico');
-
-            const td = linkElement.closest('td');
-            if (td) {
-                const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
-                if (instalacaoLink) {
-                    const urlI = new URL(instalacaoLink.href, window.location.origin);
-                    osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
-                    installationLinkElement = instalacaoLink;
-                }
-            }
         } catch (err) { /* ignore */ }
 
         if (!osNumberViabilidade) {
@@ -441,7 +407,7 @@ const modalCSS = `
             return;
         }
 
-        let numeroCaixa = null;
+        let numeroCaixa = null; // Este é o número do contrato
         const tr = linkElement.closest('tr');
         if (tr) {
             const fontTag = tr.querySelector('font[color="#0099FF"]');
@@ -449,39 +415,59 @@ const modalCSS = `
         }
 
         try {
+            // --- PASSO 1: Buscar dados da Viabilidade e Rede ---
             const osDataPromise = fetchOSData(osNumberViabilidade);
             const redePromise = numeroCaixa ? fetchRedeRadacct(numeroCaixa) : Promise.resolve(null);
-            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null);
-
-            const [jsonData, redeRadacct, jsonDataInstalacao] = await Promise.all([
-                osDataPromise,
-                redePromise,
-                osInstalacaoDataPromise
-            ]);
+            const [jsonData, redeRadacct] = await Promise.all([osDataPromise, redePromise]);
 
             if (!jsonData) {
                  console.error("Nenhuma informação JSON encontrada para esta OS.");
                  return;
             }
 
-            let observacaoInstalacao = null;
-            let anexos = [];
+            // --- PASSO 2: Lógica de Decisão (Mudança ou Instalação) ---
+            let osNumberInstalacao = null;
+            let contratoDaViabilidade = jsonData.contrato ? jsonData.contrato.trim() : '';
 
-            if (osNumberInstalacao) {
-                const obsData = await fetchInstalacaoObsEId(osNumberInstalacao);
-                if (obsData) {
-                    observacaoInstalacao = obsData.observacao;
-                    if (obsData.historicoId) {
-                        anexos = await fetchHistoricoAnexos(obsData.historicoId);
+            if (contratoDaViabilidade !== '') {
+                // É MUDANÇA DE ENDEREÇO
+                console.log('Script: Detectada Mudança de Endereço. Buscando OS correta...');
+                // Usa o contrato do JSON da Viabilidade para a busca
+                osNumberInstalacao = await fetchMudancaEnderecoOS(contratoDaViabilidade);
+                console.log(`>>> O número pego para a OS de Mudança foi: ${osNumberInstalacao}`);
+            } else {
+                // É INSTALAÇÃO NORMAL
+                console.log('Script: Detectada Instalação Normal. Buscando link "Instalação"...');
+                const td = linkElement.closest('td');
+                if (td) {
+                    // Usar a lógica do 'Instalação' exato
+                    const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.trim() === 'Instalação');
+                    if (instalacaoLink) {
+                        const urlI = new URL(instalacaoLink.href, window.location.origin);
+                        osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
+                        installationLinkElement = instalacaoLink;
                     }
                 }
             }
 
-            // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO ---
+            // --- PASSO 3: Buscar dados da Instalação/Mudança (se encontrados) ---
+            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null);
+            const observacaoDataPromise = osNumberInstalacao ? fetchInstalacaoObsEId(osNumberInstalacao) : Promise.resolve({ observacao: null, historicoId: null });
+
+            const [jsonDataInstalacao, obsData] = await Promise.all([osInstalacaoDataPromise, observacaoDataPromise]);
+
+            let anexos = [];
+            const observacaoInstalacao = obsData ? obsData.observacao : null;
+            if (obsData && obsData.historicoId) {
+                anexos = await fetchHistoricoAnexos(obsData.historicoId);
+            }
+
+            // --- PASSO 4: Lógica de Localização (Fallbacks) ---
             let locationData = { textToCopy: null };
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
                 let coordString = `${coords.lat},${coords.lon}`;
+                // 'numeroCaixa' é o contrato que pegamos da linha
                 if (numeroCaixa) coordString += ` ${numeroCaixa}`;
                 locationData = { textToCopy: coordString };
             } else {
@@ -502,12 +488,13 @@ const modalCSS = `
             }
             // --- FIM DA LÓGICA DE FALLBACK ---
 
+            // --- PASSO 5: Criar o Modal ---
             createImageModal(
                 jsonData.imagem_mapa,
                 osNumberViabilidade,
                 jsonData,
                 jsonDataInstalacao,
-                numeroCaixa,
+                numeroCaixa, // Passa o contrato da linha
                 redeRadacct,
                 true, // Mostrar botões de navegação
                 locationData,
@@ -683,7 +670,6 @@ const modalCSS = `
                                     const obsTd = allTds[i].previousElementSibling;
                                     if (obsTd && obsTd.tagName === 'TD') {
                                         observacao = obsTd.textContent.trim();
-                                        // Pegamos o ID do <td> da Observação, que é o ID do histórico
                                         historicoId = obsTd.id || null;
                                         break;
                                     }
@@ -735,6 +721,57 @@ const modalCSS = `
                 },
                 onerror: () => resolve([]),
                 ontimeout: () => resolve([])
+            });
+        });
+    }
+
+    /**
+     * (CORRIGIDO) 7. Busca a OS de Mudança de Endereço mais recente
+     */
+    function fetchMudancaEnderecoOS(contratoNumber) {
+        if (!contratoNumber) return Promise.resolve(null);
+
+        const url = `https://viaradio.jupiter.com.br/painel.php?adm=atendimentopresencial&np=100&p=1&t=1&session=false&status=-1&impressao=0&mapa=0&informado=0&tipoOS_10=10&tipo=2&valorbusca=${contratoNumber}&data-inicial=&data-final=&localidade=0&ordenar=0`;
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Tampermonkey)', 'Referer': window.location.href },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 400) {
+                        try {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                            const firstRow = doc.querySelector('tr[class^="tros"]');
+                            if (firstRow) {
+                                // Pega a primeira célula (td)
+                                const osCell = firstRow.querySelectorAll('td')[0];
+                                if (osCell) {
+                                    // (CORRIGIDO) Procura o <input> dentro da célula
+                                    const inputElement = osCell.querySelector('input[type="checkbox"]');
+                                    if (inputElement) {
+                                        // Pega o número do atributo 'value'
+                                        const osNumber = inputElement.value;
+                                        console.log(`Script: OS de Mudança de Endereço encontrada: ${osNumber}`);
+                                        resolve(osNumber);
+                                        return;
+                                    }
+                                }
+                            }
+                            console.log('Script: Nenhuma OS de Mudança de Endereço encontrada no HTML.');
+                            resolve(null);
+                        } catch (e) {
+                            console.error("Erro ao parsear HTML da Mudança de Endereço:", e);
+                            resolve(null);
+                        }
+                    } else {
+                        resolve(null);
+                    }
+                },
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null)
             });
         });
     }
@@ -856,7 +893,6 @@ const modalCSS = `
             ? `<div class="modal-image-pane-display"><img id="hud-map-image-element" src="data:image/png;base64,${dataStore.viabilidade.image}" alt="Mapa OS ${osNumber}"></div>`
             : `<div class="modal-image-pane-display"><div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div></div>`;
 
-        // (MODIFICADO) toggleHtml agora inclui o contador dentro do botão de Anexos
         const toggleHtml = `
             <div class="hud-map-toggle">
                 <button id="hud-toggle-viabilidade" class="active">Viabilidade</button>
@@ -954,19 +990,19 @@ const modalCSS = `
 
         document.body.appendChild(modal);
 
-        // --- (NOVO) Lógica para copiar dados dos campos ---
+        // --- Lógica para copiar dados dos campos ---
 
-        // Função de feedback visual
         const showCopyFeedback = (element, originalLabel) => {
-            element.querySelector('.data-item-label').textContent = 'Copiado!';
-            element.style.background = '#e0f2fe'; // Fundo azul-claro
+            const labelEl = element.querySelector('.data-item-label');
+            if (!labelEl) return;
+            labelEl.textContent = 'Copiado!';
+            element.style.background = '#e0f2fe';
             setTimeout(() => {
-                element.querySelector('.data-item-label').textContent = originalLabel;
-                element.style.background = ''; // Reseta o fundo
+                labelEl.textContent = originalLabel;
+                element.style.background = '';
             }, 800);
         };
 
-        // 1. Contrato
         const btnCopyContrato = modal.querySelector('#copy-contrato');
         if (contrato !== 'N/D') {
             btnCopyContrato.addEventListener('click', () => {
@@ -975,7 +1011,6 @@ const modalCSS = `
             });
         } else { btnCopyContrato.classList.remove('data-item-copyable'); }
 
-        // 2. Mapa
         const btnCopyMapa = modal.querySelector('#copy-mapa');
         if (mapa !== 'N/D') {
             btnCopyMapa.addEventListener('click', () => {
@@ -984,7 +1019,6 @@ const modalCSS = `
             });
         } else { btnCopyMapa.classList.remove('data-item-copyable'); }
 
-        // 3. Caixa (Viab.) - com lógica "PT"
         const btnCopyCaixaViab = modal.querySelector('#copy-caixa-viab');
         if (caixa !== 'N/D') {
             btnCopyCaixaViab.addEventListener('click', () => {
@@ -993,7 +1027,6 @@ const modalCSS = `
             });
         } else { btnCopyCaixaViab.classList.remove('data-item-copyable'); }
 
-        // 4. Rede (Viab.)
         const btnCopyRedeViab = modal.querySelector('#copy-rede-viab');
         if (redeMapa !== 'N/D') {
             btnCopyRedeViab.addEventListener('click', () => {
@@ -1002,7 +1035,6 @@ const modalCSS = `
             });
         } else { btnCopyRedeViab.classList.remove('data-item-copyable'); }
 
-        // 5. Caixa (Inst.) - com lógica "PT"
         const btnCopyCaixaInst = modal.querySelector('#copy-caixa-inst');
         if (caixaInstalacao !== 'N/D') {
             btnCopyCaixaInst.addEventListener('click', () => {
@@ -1012,6 +1044,7 @@ const modalCSS = `
         } else { btnCopyCaixaInst.classList.remove('data-item-copyable'); }
 
         // --- Fim da nova lógica de cópia ---
+
 
         // --- Lógica do Toggle Switch ---
         const btnToggleViabilidade = modal.querySelector('#hud-toggle-viabilidade');
@@ -1114,11 +1147,8 @@ const modalCSS = `
             const prevLink = prevRow ? prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
             if (prevLink) {
                 btnPrev.addEventListener('click', () => {
-                    const prevInstallationLink = Array.from(prevRow.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
-                    currentLinkElement = prevLink;
-                    installationLinkElement = prevInstallationLink;
                     closeModal(true);
-                    showOSModalForLink(prevLink, prevInstallationLink);
+                    showOSModalForLink(prevLink);
                 });
             } else btnPrev.disabled = true;
 
@@ -1126,11 +1156,8 @@ const modalCSS = `
             const nextLink = nextRow ? nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
             if (nextLink) {
                 btnNext.addEventListener('click', () => {
-                    const nextInstallationLink = Array.from(nextRow.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
-                    currentLinkElement = nextLink;
-                    installationLinkElement = nextInstallationLink;
                     closeModal(true);
-                    showOSModalForLink(nextLink, nextInstallationLink);
+                    showOSModalForLink(nextLink);
                 });
             } else btnNext.disabled = true;
         }
