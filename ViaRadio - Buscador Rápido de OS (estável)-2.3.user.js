@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      2.9
+// @version      3.0
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
-// @author       Jhon (Modificado por Parceiro de Programacao)
+// @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
