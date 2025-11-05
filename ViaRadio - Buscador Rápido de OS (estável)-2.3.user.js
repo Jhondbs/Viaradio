@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      3.2
+// @version      3.3
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
@@ -439,11 +439,13 @@ const modalCSS = `
                 console.log('Script: Detectada Instalação Normal. Buscando link "Instalação"...');
                 const td = linkElement.closest('td');
                 if (td) {
-                    const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.trim() === 'Instalação');
+                    // (CORRIGIDO) Volta a usar .includes() para pegar "Mapa Instalação"
+                    const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
                     if (instalacaoLink) {
                         const urlI = new URL(instalacaoLink.href, window.location.origin);
                         osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
                         installationLinkElement = instalacaoLink;
+                        console.log(`>>> O número pego para a OS de Instalação foi: ${osNumberInstalacao}`);
                     }
                 }
             }
@@ -743,13 +745,10 @@ const modalCSS = `
 
                             const firstRow = doc.querySelector('tr[class^="tros"]');
                             if (firstRow) {
-                                // (CORRIGIDO) Pega a primeira célula (td)
                                 const osCell = firstRow.querySelectorAll('td')[0];
                                 if (osCell) {
-                                    // (CORRIGIDO) Procura o <input> dentro da célula
                                     const inputElement = osCell.querySelector('input[type="checkbox"]');
                                     if (inputElement) {
-                                        // Pega o número do atributo 'value'
                                         const osNumber = inputElement.value;
                                         console.log(`Script: OS de Mudança de Endereço encontrada: ${osNumber}`);
                                         resolve(osNumber);
@@ -818,7 +817,7 @@ const modalCSS = `
         const dataStore = {
             viabilidade: {
                 jsonData: jsonData,
-                image: base64Image,
+                image: base64Image, // (CORRIGIDO) Erro de digitação 'base6a4Image'
                 os: osNumber
             },
             instalacao: {
