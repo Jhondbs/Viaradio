@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         ViaRadio - Buscador Rápido de OS
+// @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      2.4.1
+// @version      2.6
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
-// @author       Jhon
+// @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
@@ -101,14 +101,14 @@ const modalCSS = `
         flex: 2;
         min-width: 360px;
         display: flex;
-        flex-direction: column; /* (NOVO) Modificado para empilhar imagem e toggle */
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         padding: 18px;
         background: linear-gradient(180deg, #ffffff, #fcfdff);
         overflow: auto;
     }
-    .modal-image-pane-display { /* (NOVO) Wrapper para a imagem */
+    .modal-image-pane-display {
         flex-grow: 1;
         display: flex;
         align-items: center;
@@ -139,7 +139,6 @@ const modalCSS = `
         border: 2px dashed var(--border);
     }
 
-    /* --- (NOVO) Estilos para o Toggle Switch --- */
     .hud-map-toggle {
         display: flex;
         border-radius: 8px;
@@ -169,7 +168,6 @@ const modalCSS = `
         opacity: 0.5;
         cursor: not-allowed;
     }
-    /* --- Fim do CSS do Toggle --- */
 
     .modal-data-pane {
         flex: 1;
@@ -190,13 +188,31 @@ const modalCSS = `
         flex-grow: 1;
     }
 
+    /* Estilos para agrupar itens na mesma linha */
+    .data-item-row {
+        display: flex;
+        flex-direction: row;
+        gap: 10px; /* Espaço entre os grupos */
+        width: 100%;
+    }
+    .data-item-row .data-item {
+        flex: 1; /* Faz os itens dividirem o espaço igualmente */
+        min-width: 0; /* Ajuda o flexbox a encolher os itens */
+    }
+    .data-item-row .data-item.full-width {
+        flex-basis: 100%; /* Para o item de Cliente e Localização */
+    }
+
+
     .data-item {
-        padding: 10px 12px;
+        /* (MODIFICADO) Padding menor */
+        padding: 8px 10px;
         background: rgba(15,23,42,0.02);
         border-radius: 8px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        /* (MODIFICADO) Gap menor */
+        gap: 4px;
     }
 
     .data-item-label {
@@ -208,6 +224,23 @@ const modalCSS = `
         font-size: 14px;
         color: #0b1220;
         word-wrap: break-word;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* (NOVO) Modificador para valores longos (observação) */
+    .data-item-value.wrap {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .data-item-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
     }
 
     .data-item-copy-btn {
@@ -219,10 +252,18 @@ const modalCSS = `
         font-size: 13px;
         cursor: pointer;
         transition: background .12s, color .12s, box-shadow .12s;
+        flex: 1;
+        text-align: center;
     }
     .data-item-copy-btn:hover {
         background: rgba(37,99,235,0.06);
         box-shadow: 0 4px 14px rgba(37,99,235,0.06);
+    }
+    .data-item-copy-btn:disabled {
+        color: var(--muted);
+        background: transparent;
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
     .hud-modal-actions {
@@ -269,8 +310,12 @@ const modalCSS = `
         .hud-modal-os-viewer { width: 95vw; height: 92vh; }
         .modal-image-pane { padding: 12px; }
         .data-items-container { padding: 12px; }
-        .hud-modal-content-wrapper { flex-direction: column; } /* (NOVO) Empilha em telas menores */
+        .hud-modal-content-wrapper { flex-direction: column; }
         .modal-data-pane { border-left: none; border-top: 1px solid var(--border); max-height: 45%; }
+
+        .data-item-row {
+            flex-wrap: wrap;
+        }
     }
 `;
 /* --- Fim do CSS --- */
@@ -282,15 +327,13 @@ const modalCSS = `
     styleEl.textContent = modalCSS;
     document.head.appendChild(styleEl);
 
-    let loadingToast = null;
-    let currentLinkElement = null; // Armazena o link <a> 'Viabilidade'
-    let installationLinkElement = null; // (NOVO) Armazena o link <a> 'Instalação'
+    let currentLinkElement = null;
+    let installationLinkElement = null;
 
     // Atalho: NumpadComma ou NumpadDecimal
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'NumpadComma') {
-         //   e.preventDefault();
-            //triggerOSSearch();
+        if (e.code === 'NumpadComma' || e.code === 'NumpadDecimal') {
+            // Remover essa função
         }
     }, false);
 
@@ -300,12 +343,10 @@ const modalCSS = `
         if (link && link.href && link.href.includes('retornarMapaOrdemDeServico')) {
             e.preventDefault();
 
-            // (MODIFICADO) Guarda o link clicado (Viabilidade) e procura o de Instalação
             currentLinkElement = link;
             const td = currentLinkElement.closest('td');
-            installationLinkElement = null; // Reseta
+            installationLinkElement = null;
             if (td) {
-                // Procura o link de instalação na mesma célula
                 installationLinkElement = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
             }
 
@@ -315,86 +356,108 @@ const modalCSS = `
 
     /**
      * (MODIFICADO) Função central para processar o clique
-     * Agora aceita ambos os links
+     * Agora busca os dados da OS de Viabilidade E Instalação
      */
-    async function showOSModalForLink(viabilidadeLink, instalacaoLink) {
-        if (!viabilidadeLink) return;
+    async function showOSModalForLink(linkElement) {
+        if (!linkElement) return;
 
         let osNumberViabilidade = null;
         let osNumberInstalacao = null;
 
         try {
-            const urlV = new URL(viabilidadeLink.href, window.location.origin);
+            // Encontra o link de Viabilidade (o que foi clicado)
+            const urlV = new URL(linkElement.href, window.location.origin);
             osNumberViabilidade = urlV.searchParams.get('ordemdeservico');
 
-            if (instalacaoLink) {
-                const urlI = new URL(instalacaoLink.href, window.location.origin);
-                osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
+            // Encontra o link de Instalação (se existir)
+            const td = linkElement.closest('td');
+            if (td) {
+                const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
+                if (instalacaoLink) {
+                    const urlI = new URL(instalacaoLink.href, window.location.origin);
+                    osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
+                    // Guarda o link de instalação para o botão "Emitir Ordem"
+                    installationLinkElement = instalacaoLink;
+                }
             }
+
         } catch (err) { /* ignore */ }
 
         if (!osNumberViabilidade) {
-            showToast("Não foi possível extrair o nº da OS do link.", "error");
+            console.error("Não foi possível extrair o nº da OS do link.");
             return;
         }
 
         let numeroCaixa = null;
-        const tr = viabilidadeLink.closest('tr');
+        const tr = linkElement.closest('tr');
         if (tr) {
             const fontTag = tr.querySelector('font[color="#0099FF"]');
             if (fontTag) numeroCaixa = fontTag.textContent.trim();
         }
 
-        const toast = showToast(`Buscando OS ${osNumberViabilidade}...`, "loading");
-
         try {
-            // (MODIFICADO) Busca todos os 3 dados em paralelo
+            // (MODIFICADO) Busca todos os 4 dados em paralelo
             const osDataPromise = fetchOSData(osNumberViabilidade);
             const redePromise = numeroCaixa ? fetchRedeRadacct(numeroCaixa) : Promise.resolve(null);
-            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null);
+            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null); // Busca dados da Instalação
+            // (NOVO) Busca a observação da OS de Instalação
+            const observacaoPromise = osNumberInstalacao ? fetchInstalacaoObservacao(osNumberInstalacao) : Promise.resolve(null);
 
-            const [jsonData, redeRadacct, jsonDataInstalacao] = await Promise.all([osDataPromise, redePromise, osInstalacaoDataPromise]);
-            removeToast(toast);
 
-            // Abre o modal desde que tenhamos os dados da OS principal
-            if (jsonData) {
-                createImageModal(
-                    jsonData.imagem_mapa,
-                    osNumberViabilidade,
-                    jsonData, // Dados da Viabilidade
-                    jsonDataInstalacao, // (NOVO) Dados da Instalação
-                    numeroCaixa,
-                    redeRadacct,
-                    true // Mostrar botões de navegação
-                );
-            } else {
-                 showToast("Nenhuma informação encontrada para esta OS.", "error");
+            const [jsonData, redeRadacct, jsonDataInstalacao, observacaoInstalacao] = await Promise.all([
+                osDataPromise,
+                redePromise,
+                osInstalacaoDataPromise,
+                observacaoPromise // (NOVO)
+            ]);
+
+            if (!jsonData) {
+                 console.error("Nenhuma informação JSON encontrada para esta OS.");
                  return;
             }
 
-            // A lógica de copiar permanece a mesma (baseada na OS de Viabilidade)
+            // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO ---
+            let locationData = { textToCopy: null }; // Padrão
+
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
-                let out = `${coords.lat},${coords.lon}`;
-                if (numeroCaixa) out += ` ${numeroCaixa}`;
-                GM_setClipboard(out);
-                showToast(`Dados copiados: ${out}`, "success");
-                return;
-            }
+                let coordString = `${coords.lat},${coords.lon}`;
+                if (numeroCaixa) coordString += ` ${numeroCaixa}`;
+                locationData = { textToCopy: coordString };
 
-            const linkMapa = extractLinkFromJSON(jsonData);
-            if (linkMapa) {
-                GM_setClipboard(linkMapa);
-                showToast(`Link do mapa copiado!`, "success");
-                return;
+            } else {
+                const linkJson = extractLinkFromJSON(jsonData);
+                if (linkJson) {
+                    locationData = { textToCopy: linkJson };
+                } else {
+                    const htmlLinkViabilidade = await fetchAndParseHTMLMapLink(osNumberViabilidade);
+                    if (htmlLinkViabilidade) {
+                        locationData = { textToCopy: htmlLinkViabilidade };
+                    } else if (osNumberInstalacao) {
+                        const htmlLinkInstalacao = await fetchAndParseHTMLMapLink(osNumberInstalacao);
+                        if (htmlLinkInstalacao) {
+                            locationData = { textToCopy: htmlLinkInstalacao };
+                        }
+                    }
+                }
             }
+            // --- FIM DA LÓGICA DE FALLBACK ---
 
-            showToast("OS aberta (sem coordenadas ou link).", "success");
+            // (MODIFICADO) Abre o modal com todos os dados encontrados
+            createImageModal(
+                jsonData.imagem_mapa,
+                osNumberViabilidade,
+                jsonData,
+                jsonDataInstalacao,
+                numeroCaixa,
+                redeRadacct,
+                true, // Mostrar botões de navegação
+                locationData,
+                observacaoInstalacao // (NOVO)
+            );
 
         } catch (err) {
-            removeToast(toast);
             console.error("Erro ao buscar dados da OS no clique:", err);
-            showToast("Erro ao buscar dados da OS.", "error");
         }
     }
 
@@ -405,47 +468,44 @@ const modalCSS = `
     async function triggerOSSearch() {
         const osNumber = prompt("Digite o número da OS:");
         if (!osNumber || !/^\d+$/.test(osNumber.trim())) {
-            if (osNumber) showToast("Número de OS inválido.", "error");
             return;
         }
 
-        loadingToast = showToast(`Buscando OS ${osNumber}…`, "loading");
-        currentLinkElement = null; // Sem link de referência
+        currentLinkElement = null;
         installationLinkElement = null;
 
         try {
-            const jsonData = await fetchOSData(osNumber.trim());
-            removeToast(loadingToast);
+            const osDataPromise = fetchOSData(osNumber.trim());
+            const htmlLinkPromise = fetchAndParseHTMLMapLink(osNumber.trim());
 
-            if (jsonData) {
-                // (MODIFICADO) Passa null para jsonDataInstalacao e false para nav buttons
-                createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, null, false);
-            } else {
-                showToast("Nenhuma informação encontrada para esta OS.", "error");
+            const [jsonData, htmlLink] = await Promise.all([osDataPromise, htmlLinkPromise]);
+
+            if (!jsonData) {
+                console.error("Nenhuma informação JSON encontrada para esta OS.");
                 return;
             }
+
+            // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO (Numpad) ---
+            let locationData = { textToCopy: null }; // Padrão
 
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
-                const out = `${coords.lat},${coords.lon}`;
-                GM_setClipboard(out);
-                showToast(`Coordenadas copiadas: ${out}`, "success");
-                return;
+                locationData = { textToCopy: `${coords.lat},${coords.lon}` };
+            } else {
+                const linkJson = extractLinkFromJSON(jsonData);
+                if (linkJson) {
+                    locationData = { textToCopy: linkJson };
+                } else if (htmlLink) {
+                    locationData = { textToCopy: htmlLink };
+                }
             }
+            // --- FIM DA LÓGICA ---
 
-            const link = extractLinkFromJSON(jsonData);
-            if (link) {
-                GM_setClipboard(link);
-                showToast(`Link do mapa copiado!`, "success");
-                return;
-            }
-
-            showToast("OS aberta (sem coordenadas ou link).", "success");
+            // (MODIFICADO) Correção na chamada de argumentos e adição de 'null' para observação
+            createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, null, false, locationData, null);
 
         } catch (err) {
-            removeToast(loadingToast);
             console.error("[Buscador de OS] Erro:", err);
-            showToast("Erro ao carregar dados. Verifique o console (F12).", "error");
         }
     }
 
@@ -453,7 +513,6 @@ const modalCSS = `
      * 2. Chama a API 'pegar_ordemdeservico_id.php' (API da OS)
      */
     function fetchOSData(osNumber) {
-        // (NOVO) Retorna null se o osNumber for nulo (caso o link de instalação não exista)
         if (!osNumber) return Promise.resolve(null);
 
         const url = `https://viaradio.jupiter.com.br/json/pegar_ordemdeservico_id.php?id=${osNumber}`;
@@ -477,10 +536,10 @@ const modalCSS = `
     }
 
     /**
-     * Chama a API 'pegar_usuarios_contrato.php' (API do Contrato)
+     * 3. Chama a API 'pegar_usuarios_contrato.php' (API do Contrato)
      */
     function fetchRedeRadacct(contratoNumber) {
-        if (!contratoNumber) return Promise.resolve(null); // (NOVO) Checagem de segurança
+        if (!contratoNumber) return Promise.resolve(null);
 
         const url = `https://viaradio.jupiter.com.br/json/pegar_usuarios_contrato.php?contrato=${contratoNumber}`;
         return new Promise((resolve, reject) => {
@@ -505,6 +564,89 @@ const modalCSS = `
             });
         });
     }
+
+    /**
+     * 4. Fallback: Busca o HTML da OS para encontrar um link de mapa
+     */
+    function fetchAndParseHTMLMapLink(osNumber) {
+        if (!osNumber) return Promise.resolve(null);
+
+        const url = `https://viaradio.jupiter.com.br/retornardadosos.php?os=${osNumber}`;
+        const regex = /<a[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>Ver (localizaç|no Maps)[^<]*<\/a>/i;
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Tampermonkey)', 'Referer': window.location.href },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 400) {
+                        try {
+                            const html = response.responseText;
+                            const match = html.match(regex);
+                            if (match && match[1]) {
+                                resolve(match[1]); // Retorna o link
+                            } else {
+                                resolve(null); // Sem link
+                            }
+                        } catch (e) { resolve(null); }
+                    } else { resolve(null); }
+                },
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null)
+            });
+        });
+    }
+
+    /**
+     * (NOVO) 5. Busca o HTML da OS de Instalação para extrair a Observação
+     */
+    function fetchInstalacaoObservacao(osNumber) {
+        if (!osNumber) return Promise.resolve(null);
+
+        const url = `https://viaradio.jupiter.com.br/retornardadosos.php?os=${osNumber}`;
+
+        return new Promise((resolve) => { // Nunca rejeita, apenas retorna null em caso de falha
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Tampermonkey)', 'Referer': window.location.href },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 400) {
+                        try {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                            // Encontra todas as células <td> no documento
+                            const allTds = doc.querySelectorAll('td');
+                            let observacao = null;
+
+                            // Itera por todas as <td> para encontrar a que tem o texto "Concluído"
+                            for (let i = 0; i < allTds.length; i++) {
+                                if (allTds[i].textContent.trim() === 'Concluído') {
+                                    // Pega o elemento <td> imediatamente anterior
+                                    const obsTd = allTds[i].previousElementSibling;
+                                    if (obsTd && obsTd.tagName === 'TD') {
+                                        observacao = obsTd.textContent.trim();
+                                        break; // Encontramos, podemos parar
+                                    }
+                                }
+                            }
+                            resolve(observacao);
+                        } catch (e) {
+                            console.error("Erro ao parsear observacao:", e);
+                            resolve(null);
+                        }
+                    } else {
+                        resolve(null);
+                    }
+                },
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null)
+            });
+        });
+    }
+
 
     /**
      * 3a. Extrai as coordenadas do JSON
@@ -537,20 +679,12 @@ const modalCSS = `
     }
 
 
-    // --- Funções de Notificação (Toast) ---
-    function showToast(message, type = 'success') {
-        // Removido
-    }
-
-    function removeToast(toast) {
-        if (!toast) return;
-        toast.style.transform = 'translateX(120%)';
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 280);
-    }
+    // --- (REMOVIDO) Funções de Notificação (Toast) ---
+    function showToast() {}
+    function removeToast() {}
 
     // --- (MODIFICADO) Modal visualizador ---
-    function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false) {
+    function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false, locationData, observacaoInstalacao) {
         const oldModal = document.getElementById('hud-os-image-modal');
         if (oldModal) oldModal.remove();
 
@@ -562,27 +696,26 @@ const modalCSS = `
                 os: osNumber
             },
             instalacao: {
-                jsonData: jsonDataInstalacao, // Pode ser null
+                jsonData: jsonDataInstalacao,
                 image: jsonDataInstalacao ? jsonDataInstalacao.imagem_mapa : null,
                 os: jsonDataInstalacao ? jsonDataInstalacao.id : null
             }
         };
         // --- Fim do armaz. de dados ---
 
-        // --- Parse de todos os dados (para o painel da direita, que não muda) ---
+        // --- Parse de todos os dados (para o painel da direita) ---
         let cliente = "N/D";
         let contrato = numeroCaixa || "N/D";
         let mapa = osNumber || "N/D";
         let caixa = "N/D";
         let redeMapa = "N/D";
         let redeReal = redeRadacct || "N/D";
-        let coords = null;
-        let coordsString = "N/D";
+        let textToCopy = locationData ? locationData.textToCopy : null;
+        let coordsString = locationData ? (locationData.textToCopy || "N/D") : "N/D";
+        let observacao = observacaoInstalacao || "N/D"; // (NOVO)
 
-        if (jsonData) { // Usamos jsonData (viabilidade) como fonte principal para os dados da direita
+        if (jsonData) {
             cliente = jsonData.nomecliente || "N/D";
-            coords = extractCoordsFromJSON(jsonData);
-            if (coords) coordsString = `${coords.lat},${coords.lon}`;
             try {
                 const dadosMapa = JSON.parse(jsonData.dados_mapa || "{}");
                 if (dadosMapa.terminalSelecionado) caixa = dadosMapa.terminalSelecionado.replace(/PT/i, '').trim();
@@ -594,6 +727,17 @@ const modalCSS = `
                     } else {
                         redeMapa = partesRede[0].trim() || descRede;
                     }
+                }
+            } catch (e) {}
+        }
+
+        // --- Parse dos dados da Instalação para a Caixa (Inst.) ---
+        let caixaInstalacao = "N/D";
+        if (jsonDataInstalacao) {
+            try {
+                const dadosMapaInst = JSON.parse(jsonDataInstalacao.dados_mapa || "{}");
+                if (dadosMapaInst.terminalSelecionado) {
+                    caixaInstalacao = dadosMapaInst.terminalSelecionado.replace(/PT/i, '').trim();
                 }
             } catch (e) {}
         }
@@ -613,12 +757,10 @@ const modalCSS = `
             </div>
         ` : '';
 
-        // (NOVO) Define o HTML do painel da imagem dinamicamente (começa com Viabilidade)
         const imagePaneHtml = dataStore.viabilidade.image
             ? `<div class="modal-image-pane-display"><img id="hud-map-image-element" src="data:image/png;base64,${dataStore.viabilidade.image}" alt="Mapa OS ${osNumber}"></div>`
             : `<div class="modal-image-pane-display"><div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div></div>`;
 
-        // (NOVO) Cria o HTML do Toggle
         const toggleHtml = `
             <div class="hud-map-toggle">
                 <button id="hud-toggle-viabilidade" class="active">Viabilidade</button>
@@ -626,6 +768,7 @@ const modalCSS = `
             </div>
         `;
 
+        // --- (MODIFICADO) HTML do Modal atualizado com Linha 6 ---
         modal.innerHTML = `
             <div class="hud-modal-header">
                 <span id="hud-modal-title" title="${titleText}">${titleText}</span>
@@ -636,22 +779,67 @@ const modalCSS = `
             <div class="hud-modal-content-wrapper">
                 <div class="modal-image-pane">
                     ${imagePaneHtml}
-                    ${toggleHtml} </div>
+                    ${toggleHtml}
+                </div>
                 <div class="modal-data-pane">
                     <div class="data-items-container">
-                        <div class="data-item"><div class="data-item-label">Cliente</div><div class="data-item-value">${cliente}</div></div>
-                        <div class="data-item"><div class="data-item-label">Contrato</div><div class="data-item-value">${contrato}</div></div>
-                        <div class="data-item"><div class="data-item-label">Mapa</div><div class="data-item-value">${mapa}</div></div>
-                        <div class="data-item"><div class="data-item-label">Caixa</div><div class="data-item-value">${caixa}</div></div>
-                        <div class="data-item"><div class="data-item-label">Rede no Mapa</div><div class="data-item-value">${redeMapa}</div></div>
-                        <div class="data-item"><div class="data-item-label">Rede Real</div><div class="data-item-value">${redeReal}</div></div>
-                        <div class="data-item">
-                            <div class="data-item-label">Localização</div>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div class="data-item-value" id="hud-coords-value">${coordsString}</div>
-                                <button id="hud-copy-coords-btn" class="data-item-copy-btn" title="Copiar Coordenadas">copiar</button>
+
+                        <div class="data-item-row">
+                            <div class="data-item full-width">
+                                <div class="data-item-label">Cliente</div>
+                                <div class="data-item-value">${cliente}</div>
                             </div>
                         </div>
+
+                        <div class="data-item-row">
+                            <div class="data-item">
+                                <div class="data-item-label">Contrato</div>
+                                <div class="data-item-value">${contrato}</div>
+                            </div>
+                            <div class="data-item">
+                                <div class="data-item-label">Mapa</div>
+                                <div class="data-item-value">${mapa}</div>
+                            </div>
+                            <div class="data-item">
+                                <div class="data-item-label">Caixa (Viab.)</div>
+                                <div class="data-item-value">${caixa}</div>
+                            </div>
+                        </div>
+
+                        <div class="data-item-row">
+                            <div class="data-item">
+                                <div class="data-item-label">Rede (Viab.)</div>
+                                <div class="data-item-value">${redeMapa}</div>
+                            </div>
+                            <div class="data-item">
+                                <div class="data-item-label">Caixa (Inst.)</div>
+                                <div class="data-item-value">${caixaInstalacao}</div>
+                            </div>
+                        </div>
+
+                        <div class="data-item-row">
+                            <div class="data-item full-width">
+                                <div class="data-item-label">Rede Real</div>
+                                <div class="data-item-value">${redeReal}</div>
+                            </div>
+                        </div>
+
+                        <div class="data-item-row">
+                            <div class="data-item full-width">
+                                <div class="data-item-label">Localização</div>
+                                <div class="data-item-actions">
+                                    <button id="hud-copy-coords-btn" class="data-item-copy-btn" title="Copiar Localização">Copiar Localização</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="data-item-row">
+                            <div class="data-item full-width">
+                                <div class="data-item-label">Observação</div>
+                                <div class="data-item-value wrap">${observacao}</div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <div class="hud-modal-actions">
@@ -665,26 +853,23 @@ const modalCSS = `
                 </div>
             </div>
         `;
+        // --- (FIM DA MODIFICAÇÃO) ---
 
         document.body.appendChild(modal);
 
-        // --- (NOVO) Lógica do Toggle Switch ---
+        // --- Lógica do Toggle Switch ---
         const btnToggleViabilidade = modal.querySelector('#hud-toggle-viabilidade');
         const btnToggleInstalacao = modal.querySelector('#hud-toggle-instalacao');
         const imageDisplayContainer = modal.querySelector('.modal-image-pane-display');
 
-        // Função para trocar a imagem
         const setMapImage = (type) => {
-            const imageData = (type === 'viabilidade') ? dataStore.viabilidade.image : dataStore.instalacao.image;
-            const osNum = (type === 'viabilidade') ? dataStore.viabilidade.os : dataStore.instalacao.os;
-
+            const imageData = dataStore[type].image;
+            const osNum = dataStore[type].os;
             if (imageData) {
                 imageDisplayContainer.innerHTML = `<img id="hud-map-image-element" src="data:image/png;base64,${imageData}" alt="Mapa OS ${osNum}">`;
             } else {
                 imageDisplayContainer.innerHTML = `<div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div>`;
             }
-
-            // Atualiza o estado ativo dos botões
             btnToggleViabilidade.classList.toggle('active', type === 'viabilidade');
             btnToggleInstalacao.classList.toggle('active', type === 'instalacao');
         };
@@ -692,11 +877,9 @@ const modalCSS = `
         btnToggleViabilidade.addEventListener('click', () => setMapImage('viabilidade'));
         btnToggleInstalacao.addEventListener('click', () => setMapImage('instalacao'));
 
-        // Desativa o botão de instalação se não houver dados
         if (!dataStore.instalacao.jsonData) {
             btnToggleInstalacao.disabled = true;
         }
-        // Se a busca foi pelo Numpad, esconde o toggle
         if (!showNavButtons) {
             modal.querySelector('.hud-map-toggle').style.display = 'none';
         }
@@ -704,6 +887,7 @@ const modalCSS = `
 
 
         // --- Listeners de Fecho, Cópia, Navegação e Drag ---
+
         const closeModal = (isNavigating = false) => {
             modal.remove();
             if (!isNavigating) {
@@ -717,12 +901,11 @@ const modalCSS = `
         document.addEventListener('keydown', handleEscKey);
 
         const copyBtn = modal.querySelector('#hud-copy-coords-btn');
-        if (coords && coordsString !== "N/D") {
+        if (textToCopy) {
             copyBtn.addEventListener('click', () => {
-                GM_setClipboard(coordsString);
-                showToast('Coordenadas copiadas!', 'success');
-                copyBtn.textContent = 'copiado';
-                setTimeout(()=> copyBtn.textContent = 'copiar', 800);
+                GM_setClipboard(textToCopy);
+                copyBtn.textContent = 'Copiado!';
+                setTimeout(()=> copyBtn.textContent = 'Copiar Localização', 800);
             });
         } else {
             copyBtn.textContent = 'N/D';
@@ -730,7 +913,7 @@ const modalCSS = `
         }
 
         const btnEmitirOrdem = modal.querySelector('#hud-emitir-ordem-btn');
-        if (currentLinkElement) { // Só ativa se foi um clique
+        if (currentLinkElement) {
             btnEmitirOrdem.addEventListener('click', () => {
                 try {
                     window.open(currentLinkElement.href, '_blank');
