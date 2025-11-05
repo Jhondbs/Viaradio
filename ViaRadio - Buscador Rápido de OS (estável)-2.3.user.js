@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      2.6
+// @version      2.7
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
@@ -125,6 +125,38 @@ const modalCSS = `
         background: #fff;
     }
 
+    /* (MODIFICADO) Estilos para a galeria de Anexos - adicionado justify-content: center */
+    .anexos-gallery-container {
+        width: 100%;
+        height: 100%;
+        overflow-y: auto; /* Permite rolar os anexos */
+        display: flex;
+        flex-wrap: wrap; /* Imagens quebram a linha */
+        gap: 10px;
+        padding: 10px;
+        background: #f8f9fa; /* Fundo leve */
+        border-radius: 6px;
+        align-content: flex-start; /* Alinha os itens no topo */
+        justify-content: center; /* (NOVO) Centraliza as imagens */
+    }
+    .anexos-gallery-container img {
+        /* Duas colunas com um espaço de 5px */
+        width: calc(50% - 5px);
+        height: auto;
+        object-fit: contain; /* 'contain' é melhor para ver a imagem toda */
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 4px 10px rgba(15,23,42,0.05);
+        border: 1px solid var(--border);
+    }
+    /* Em telas menores, passa para uma coluna */
+    @media (max-width: 600px) {
+         .anexos-gallery-container img {
+            width: 100%;
+         }
+    }
+
+
     .modal-no-image-placeholder {
         display: flex;
         align-items: center;
@@ -158,6 +190,8 @@ const modalCSS = `
         color: var(--muted);
         cursor: pointer;
         transition: background .2s, color .2s, box-shadow .2s;
+        flex: 1;
+        white-space: nowrap;
     }
     .hud-map-toggle button.active {
         background: var(--panel);
@@ -167,6 +201,20 @@ const modalCSS = `
     .hud-map-toggle button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+    /* (NOVO) Estilo para o contador */
+    .hud-map-toggle button .count {
+        background: var(--accent);
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 999px;
+        min-width: 18px;
+        text-align: center;
+    }
+    .hud-map-toggle button:disabled .count {
+        background: var(--muted);
     }
 
     .modal-data-pane {
@@ -205,13 +253,11 @@ const modalCSS = `
 
 
     .data-item {
-        /* (MODIFICADO) Padding menor */
         padding: 8px 10px;
         background: rgba(15,23,42,0.02);
         border-radius: 8px;
         display: flex;
         flex-direction: column;
-        /* (MODIFICADO) Gap menor */
         gap: 4px;
     }
 
@@ -229,7 +275,6 @@ const modalCSS = `
         text-overflow: ellipsis;
     }
 
-    /* (NOVO) Modificador para valores longos (observação) */
     .data-item-value.wrap {
         white-space: normal;
         overflow: visible;
@@ -355,8 +400,7 @@ const modalCSS = `
     }, true);
 
     /**
-     * (MODIFICADO) Função central para processar o clique
-     * Agora busca os dados da OS de Viabilidade E Instalação
+     * Função central para processar o clique
      */
     async function showOSModalForLink(linkElement) {
         if (!linkElement) return;
@@ -365,22 +409,18 @@ const modalCSS = `
         let osNumberInstalacao = null;
 
         try {
-            // Encontra o link de Viabilidade (o que foi clicado)
             const urlV = new URL(linkElement.href, window.location.origin);
             osNumberViabilidade = urlV.searchParams.get('ordemdeservico');
 
-            // Encontra o link de Instalação (se existir)
             const td = linkElement.closest('td');
             if (td) {
                 const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.includes('Instalação'));
                 if (instalacaoLink) {
                     const urlI = new URL(instalacaoLink.href, window.location.origin);
                     osNumberInstalacao = urlI.searchParams.get('ordemdeservico');
-                    // Guarda o link de instalação para o botão "Emitir Ordem"
                     installationLinkElement = instalacaoLink;
                 }
             }
-
         } catch (err) { /* ignore */ }
 
         if (!osNumberViabilidade) {
@@ -396,19 +436,14 @@ const modalCSS = `
         }
 
         try {
-            // (MODIFICADO) Busca todos os 4 dados em paralelo
             const osDataPromise = fetchOSData(osNumberViabilidade);
             const redePromise = numeroCaixa ? fetchRedeRadacct(numeroCaixa) : Promise.resolve(null);
-            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null); // Busca dados da Instalação
-            // (NOVO) Busca a observação da OS de Instalação
-            const observacaoPromise = osNumberInstalacao ? fetchInstalacaoObservacao(osNumberInstalacao) : Promise.resolve(null);
+            const osInstalacaoDataPromise = osNumberInstalacao ? fetchOSData(osNumberInstalacao) : Promise.resolve(null);
 
-
-            const [jsonData, redeRadacct, jsonDataInstalacao, observacaoInstalacao] = await Promise.all([
+            const [jsonData, redeRadacct, jsonDataInstalacao] = await Promise.all([
                 osDataPromise,
                 redePromise,
-                osInstalacaoDataPromise,
-                observacaoPromise // (NOVO)
+                osInstalacaoDataPromise
             ]);
 
             if (!jsonData) {
@@ -416,15 +451,26 @@ const modalCSS = `
                  return;
             }
 
-            // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO ---
-            let locationData = { textToCopy: null }; // Padrão
+            let observacaoInstalacao = null;
+            let anexos = [];
 
+            if (osNumberInstalacao) {
+                const obsData = await fetchInstalacaoObsEId(osNumberInstalacao);
+                if (obsData) {
+                    observacaoInstalacao = obsData.observacao;
+                    if (obsData.historicoId) {
+                        anexos = await fetchHistoricoAnexos(obsData.historicoId);
+                    }
+                }
+            }
+
+            // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO ---
+            let locationData = { textToCopy: null };
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
                 let coordString = `${coords.lat},${coords.lon}`;
                 if (numeroCaixa) coordString += ` ${numeroCaixa}`;
                 locationData = { textToCopy: coordString };
-
             } else {
                 const linkJson = extractLinkFromJSON(jsonData);
                 if (linkJson) {
@@ -443,7 +489,6 @@ const modalCSS = `
             }
             // --- FIM DA LÓGICA DE FALLBACK ---
 
-            // (MODIFICADO) Abre o modal com todos os dados encontrados
             createImageModal(
                 jsonData.imagem_mapa,
                 osNumberViabilidade,
@@ -453,7 +498,8 @@ const modalCSS = `
                 redeRadacct,
                 true, // Mostrar botões de navegação
                 locationData,
-                observacaoInstalacao // (NOVO)
+                observacaoInstalacao,
+                anexos
             );
 
         } catch (err) {
@@ -486,8 +532,7 @@ const modalCSS = `
             }
 
             // --- LÓGICA DE FALLBACK DE LOCALIZAÇÃO (Numpad) ---
-            let locationData = { textToCopy: null }; // Padrão
-
+            let locationData = { textToCopy: null };
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
                 locationData = { textToCopy: `${coords.lat},${coords.lon}` };
@@ -501,8 +546,7 @@ const modalCSS = `
             }
             // --- FIM DA LÓGICA ---
 
-            // (MODIFICADO) Correção na chamada de argumentos e adição de 'null' para observação
-            createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, null, false, locationData, null);
+            createImageModal(jsonData.imagem_mapa, osNumber, jsonData, null, null, null, false, locationData, null, []);
 
         } catch (err) {
             console.error("[Buscador de OS] Erro:", err);
@@ -599,14 +643,14 @@ const modalCSS = `
     }
 
     /**
-     * (NOVO) 5. Busca o HTML da OS de Instalação para extrair a Observação
+     * 5. Busca o HTML da OS de Instalação para extrair a Observação E o ID do Histórico
      */
-    function fetchInstalacaoObservacao(osNumber) {
-        if (!osNumber) return Promise.resolve(null);
+    function fetchInstalacaoObsEId(osNumber) {
+        if (!osNumber) return Promise.resolve({ observacao: null, historicoId: null });
 
         const url = `https://viaradio.jupiter.com.br/retornardadosos.php?os=${osNumber}`;
 
-        return new Promise((resolve) => { // Nunca rejeita, apenas retorna null em caso de falha
+        return new Promise((resolve) => {
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
@@ -617,32 +661,67 @@ const modalCSS = `
                             const parser = new DOMParser();
                             const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                            // Encontra todas as células <td> no documento
                             const allTds = doc.querySelectorAll('td');
                             let observacao = null;
+                            let historicoId = null;
 
-                            // Itera por todas as <td> para encontrar a que tem o texto "Concluído"
                             for (let i = 0; i < allTds.length; i++) {
                                 if (allTds[i].textContent.trim() === 'Concluído') {
-                                    // Pega o elemento <td> imediatamente anterior
                                     const obsTd = allTds[i].previousElementSibling;
                                     if (obsTd && obsTd.tagName === 'TD') {
                                         observacao = obsTd.textContent.trim();
-                                        break; // Encontramos, podemos parar
+                                        // Pegamos o ID do <td> da Observação, que é o ID do histórico
+                                        historicoId = obsTd.id || null;
+                                        break;
                                     }
                                 }
                             }
-                            resolve(observacao);
+                            resolve({ observacao, historicoId });
                         } catch (e) {
                             console.error("Erro ao parsear observacao:", e);
-                            resolve(null);
+                            resolve({ observacao: null, historicoId: null });
                         }
                     } else {
-                        resolve(null);
+                        resolve({ observacao: null, historicoId: null });
                     }
                 },
-                onerror: () => resolve(null),
-                ontimeout: () => resolve(null)
+                onerror: () => resolve({ observacao: null, historicoId: null }),
+                ontimeout: () => resolve({ observacao: null, historicoId: null })
+            });
+        });
+    }
+
+    /**
+     * 6. Busca os Anexos (imagens) de um histórico específico
+     */
+    function fetchHistoricoAnexos(historicoId) {
+        if (!historicoId) return Promise.resolve([]);
+
+        const url = `https://viaradio.jupiter.com.br/json/retornar_dados_historico_os.php?historico=${historicoId}`;
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Tampermonkey)', 'Referer': window.location.href },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 400) {
+                        try {
+                            const data = JSON.parse(response.responseText);
+                            if (data.success === "1" && data.supervisao && data.supervisao.imagens) {
+                                resolve(data.supervisao.imagens);
+                            } else {
+                                resolve([]);
+                            }
+                        } catch (e) {
+                            console.error("Erro ao parsear JSON dos Anexos:", e);
+                            resolve([]);
+                        }
+                    } else {
+                        resolve([]);
+                    }
+                },
+                onerror: () => resolve([]),
+                ontimeout: () => resolve([])
             });
         });
     }
@@ -683,8 +762,8 @@ const modalCSS = `
     function showToast() {}
     function removeToast() {}
 
-    // --- (MODIFICADO) Modal visualizador ---
-    function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false, locationData, observacaoInstalacao) {
+    // --- Modal visualizador ---
+    function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false, locationData, observacaoInstalacao, anexos = []) {
         const oldModal = document.getElementById('hud-os-image-modal');
         if (oldModal) oldModal.remove();
 
@@ -692,13 +771,17 @@ const modalCSS = `
         const dataStore = {
             viabilidade: {
                 jsonData: jsonData,
-                image: base64Image, // Pode ser null
+                image: base64Image,
                 os: osNumber
             },
             instalacao: {
                 jsonData: jsonDataInstalacao,
                 image: jsonDataInstalacao ? jsonDataInstalacao.imagem_mapa : null,
                 os: jsonDataInstalacao ? jsonDataInstalacao.id : null
+            },
+            anexos: {
+                images: anexos || [],
+                os: null
             }
         };
         // --- Fim do armaz. de dados ---
@@ -712,7 +795,7 @@ const modalCSS = `
         let redeReal = redeRadacct || "N/D";
         let textToCopy = locationData ? locationData.textToCopy : null;
         let coordsString = locationData ? (locationData.textToCopy || "N/D") : "N/D";
-        let observacao = observacaoInstalacao || "N/D"; // (NOVO)
+        let observacao = observacaoInstalacao || "N/D";
 
         if (jsonData) {
             cliente = jsonData.nomecliente || "N/D";
@@ -731,7 +814,6 @@ const modalCSS = `
             } catch (e) {}
         }
 
-        // --- Parse dos dados da Instalação para a Caixa (Inst.) ---
         let caixaInstalacao = "N/D";
         if (jsonDataInstalacao) {
             try {
@@ -761,14 +843,16 @@ const modalCSS = `
             ? `<div class="modal-image-pane-display"><img id="hud-map-image-element" src="data:image/png;base64,${dataStore.viabilidade.image}" alt="Mapa OS ${osNumber}"></div>`
             : `<div class="modal-image-pane-display"><div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div></div>`;
 
+        // (MODIFICADO) toggleHtml agora inclui o contador dentro do botão de Anexos
         const toggleHtml = `
             <div class="hud-map-toggle">
                 <button id="hud-toggle-viabilidade" class="active">Viabilidade</button>
                 <button id="hud-toggle-instalacao">Instalação</button>
+                <button id="hud-toggle-anexos">Anexos (${dataStore.anexos.images.length})</button>
             </div>
         `;
 
-        // --- (MODIFICADO) HTML do Modal atualizado com Linha 6 ---
+        // --- HTML do Modal atualizado com Linha 6 ---
         modal.innerHTML = `
             <div class="hud-modal-header">
                 <span id="hud-modal-title" title="${titleText}">${titleText}</span>
@@ -853,33 +937,59 @@ const modalCSS = `
                 </div>
             </div>
         `;
-        // --- (FIM DA MODIFICAÇÃO) ---
+        // --- Fim da Modificação do HTML ---
 
         document.body.appendChild(modal);
 
         // --- Lógica do Toggle Switch ---
         const btnToggleViabilidade = modal.querySelector('#hud-toggle-viabilidade');
         const btnToggleInstalacao = modal.querySelector('#hud-toggle-instalacao');
+        const btnToggleAnexos = modal.querySelector('#hud-toggle-anexos');
         const imageDisplayContainer = modal.querySelector('.modal-image-pane-display');
 
         const setMapImage = (type) => {
-            const imageData = dataStore[type].image;
-            const osNum = dataStore[type].os;
-            if (imageData) {
-                imageDisplayContainer.innerHTML = `<img id="hud-map-image-element" src="data:image/png;base64,${imageData}" alt="Mapa OS ${osNum}">`;
-            } else {
-                imageDisplayContainer.innerHTML = `<div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div>`;
+            btnToggleViabilidade.classList.remove('active');
+            btnToggleInstalacao.classList.remove('active');
+            btnToggleAnexos.classList.remove('active');
+
+            if (type === 'viabilidade' || type === 'instalacao') {
+                const imageData = dataStore[type].image;
+                const osNum = dataStore[type].os;
+                if (imageData) {
+                    imageDisplayContainer.innerHTML = `<img id="hud-map-image-element" src="data:image/png;base64,${imageData}" alt="Mapa OS ${osNum}">`;
+                } else {
+                    imageDisplayContainer.innerHTML = `<div class="modal-no-image-placeholder" id="hud-map-image-placeholder">ORDEM SEM MAPA ANEXADO</div>`;
+                }
+                if (type === 'viabilidade') btnToggleViabilidade.classList.add('active');
+                if (type === 'instalacao') btnToggleInstalacao.classList.add('active');
+
+            } else if (type === 'anexos') {
+                const images = dataStore.anexos.images;
+                if (images && images.length > 0) {
+                    let galleryHtml = '<div class="anexos-gallery-container">';
+                    images.forEach(imgBase64 => {
+                        galleryHtml += `<img src="data:image/png;base64,${imgBase64}" alt="Anexo">`;
+                    });
+                    galleryHtml += '</div>';
+                    imageDisplayContainer.innerHTML = galleryHtml;
+                } else {
+                    imageDisplayContainer.innerHTML = `<div class="modal-no-image-placeholder" id="hud-map-image-placeholder">SEM ANEXOS</div>`;
+                }
+                btnToggleAnexos.classList.add('active');
             }
-            btnToggleViabilidade.classList.toggle('active', type === 'viabilidade');
-            btnToggleInstalacao.classList.toggle('active', type === 'instalacao');
         };
 
         btnToggleViabilidade.addEventListener('click', () => setMapImage('viabilidade'));
         btnToggleInstalacao.addEventListener('click', () => setMapImage('instalacao'));
+        btnToggleAnexos.addEventListener('click', () => setMapImage('anexos'));
 
         if (!dataStore.instalacao.jsonData) {
             btnToggleInstalacao.disabled = true;
         }
+        if (!dataStore.anexos.images || dataStore.anexos.images.length === 0) {
+             btnToggleAnexos.disabled = true;
+        }
+
         if (!showNavButtons) {
             modal.querySelector('.hud-map-toggle').style.display = 'none';
         }
