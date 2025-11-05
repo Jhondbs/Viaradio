@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      2.7
+// @version      2.8
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
@@ -361,6 +361,19 @@ const modalCSS = `
         .data-item-row {
             flex-wrap: wrap;
         }
+    }
+
+    .data-item-copyable {
+        cursor: pointer;
+        transition: background .12s, box-shadow .12s, transform .05s;
+    }
+    .data-item-copyable:hover {
+        background: rgba(37, 99, 235, 0.05); /* Um leve tom azul no hover */
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+    }
+    .data-item-copyable:active {
+        transform: translateY(1px); /* Efeito de clique */
+        background: rgba(37, 99, 235, 0.08);
     }
 `;
 /* --- Fim do CSS --- */
@@ -876,26 +889,26 @@ const modalCSS = `
                         </div>
 
                         <div class="data-item-row">
-                            <div class="data-item">
+                            <div class="data-item data-item-copyable" id="copy-contrato">
                                 <div class="data-item-label">Contrato</div>
                                 <div class="data-item-value">${contrato}</div>
                             </div>
-                            <div class="data-item">
+                            <div class="data-item data-item-copyable" id="copy-mapa">
                                 <div class="data-item-label">Mapa</div>
                                 <div class="data-item-value">${mapa}</div>
                             </div>
-                            <div class="data-item">
+                            <div class="data-item data-item-copyable" id="copy-caixa-viab">
                                 <div class="data-item-label">Caixa (Viab.)</div>
                                 <div class="data-item-value">${caixa}</div>
                             </div>
                         </div>
 
                         <div class="data-item-row">
-                            <div class="data-item">
+                            <div class="data-item data-item-copyable" id="copy-rede-viab">
                                 <div class="data-item-label">Rede (Viab.)</div>
                                 <div class="data-item-value">${redeMapa}</div>
                             </div>
-                            <div class="data-item">
+                            <div class="data-item data-item-copyable" id="copy-caixa-inst">
                                 <div class="data-item-label">Caixa (Inst.)</div>
                                 <div class="data-item-value">${caixaInstalacao}</div>
                             </div>
@@ -940,6 +953,65 @@ const modalCSS = `
         // --- Fim da Modificação do HTML ---
 
         document.body.appendChild(modal);
+
+        // --- (NOVO) Lógica para copiar dados dos campos ---
+
+        // Função de feedback visual
+        const showCopyFeedback = (element, originalLabel) => {
+            element.querySelector('.data-item-label').textContent = 'Copiado!';
+            element.style.background = '#e0f2fe'; // Fundo azul-claro
+            setTimeout(() => {
+                element.querySelector('.data-item-label').textContent = originalLabel;
+                element.style.background = ''; // Reseta o fundo
+            }, 800);
+        };
+
+        // 1. Contrato
+        const btnCopyContrato = modal.querySelector('#copy-contrato');
+        if (contrato !== 'N/D') {
+            btnCopyContrato.addEventListener('click', () => {
+                GM_setClipboard(contrato);
+                showCopyFeedback(btnCopyContrato, 'Contrato');
+            });
+        } else { btnCopyContrato.classList.remove('data-item-copyable'); }
+
+        // 2. Mapa
+        const btnCopyMapa = modal.querySelector('#copy-mapa');
+        if (mapa !== 'N/D') {
+            btnCopyMapa.addEventListener('click', () => {
+                GM_setClipboard(mapa);
+                showCopyFeedback(btnCopyMapa, 'Mapa');
+            });
+        } else { btnCopyMapa.classList.remove('data-item-copyable'); }
+
+        // 3. Caixa (Viab.) - com lógica "PT"
+        const btnCopyCaixaViab = modal.querySelector('#copy-caixa-viab');
+        if (caixa !== 'N/D') {
+            btnCopyCaixaViab.addEventListener('click', () => {
+                GM_setClipboard(`PT${caixa}`);
+                showCopyFeedback(btnCopyCaixaViab, 'Caixa (Viab.)');
+            });
+        } else { btnCopyCaixaViab.classList.remove('data-item-copyable'); }
+
+        // 4. Rede (Viab.)
+        const btnCopyRedeViab = modal.querySelector('#copy-rede-viab');
+        if (redeMapa !== 'N/D') {
+            btnCopyRedeViab.addEventListener('click', () => {
+                GM_setClipboard(redeMapa);
+                showCopyFeedback(btnCopyRedeViab, 'Rede (Viab.)');
+            });
+        } else { btnCopyRedeViab.classList.remove('data-item-copyable'); }
+
+        // 5. Caixa (Inst.) - com lógica "PT"
+        const btnCopyCaixaInst = modal.querySelector('#copy-caixa-inst');
+        if (caixaInstalacao !== 'N/D') {
+            btnCopyCaixaInst.addEventListener('click', () => {
+                GM_setClipboard(`PT${caixaInstalacao}`);
+                showCopyFeedback(btnCopyCaixaInst, 'Caixa (Inst.)');
+            });
+        } else { btnCopyCaixaInst.classList.remove('data-item-copyable'); }
+
+        // --- Fim da nova lógica de cópia ---
 
         // --- Lógica do Toggle Switch ---
         const btnToggleViabilidade = modal.querySelector('#hud-toggle-viabilidade');
