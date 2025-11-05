@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio - Visualizador de O.S
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon
 // @match        *://viaradio.jupiter.com.br/*
@@ -188,7 +188,7 @@ const modalCSS = `
         cursor: pointer;
         transition: background .2s, color .2s, box-shadow .2s;
         flex: 1;
-        white-space: nowrap; /* Garante que "Anexos (X)" não quebre a linha */
+        white-space: nowrap;
     }
     .hud-map-toggle button.active {
         background: var(--panel);
@@ -432,7 +432,6 @@ const modalCSS = `
             if (contratoDaViabilidade !== '') {
                 // É MUDANÇA DE ENDEREÇO
                 console.log('Script: Detectada Mudança de Endereço. Buscando OS correta...');
-                // Usa o contrato do JSON da Viabilidade para a busca
                 osNumberInstalacao = await fetchMudancaEnderecoOS(contratoDaViabilidade);
                 console.log(`>>> O número pego para a OS de Mudança foi: ${osNumberInstalacao}`);
             } else {
@@ -440,7 +439,6 @@ const modalCSS = `
                 console.log('Script: Detectada Instalação Normal. Buscando link "Instalação"...');
                 const td = linkElement.closest('td');
                 if (td) {
-                    // Usar a lógica do 'Instalação' exato
                     const instalacaoLink = Array.from(td.querySelectorAll('a')).find(a => a.textContent.trim() === 'Instalação');
                     if (instalacaoLink) {
                         const urlI = new URL(instalacaoLink.href, window.location.origin);
@@ -467,7 +465,6 @@ const modalCSS = `
             const coords = extractCoordsFromJSON(jsonData);
             if (coords) {
                 let coordString = `${coords.lat},${coords.lon}`;
-                // 'numeroCaixa' é o contrato que pegamos da linha
                 if (numeroCaixa) coordString += ` ${numeroCaixa}`;
                 locationData = { textToCopy: coordString };
             } else {
@@ -726,7 +723,7 @@ const modalCSS = `
     }
 
     /**
-     * (CORRIGIDO) 7. Busca a OS de Mudança de Endereço mais recente
+     * 7. Busca a OS de Mudança de Endereço mais recente
      */
     function fetchMudancaEnderecoOS(contratoNumber) {
         if (!contratoNumber) return Promise.resolve(null);
@@ -746,7 +743,7 @@ const modalCSS = `
 
                             const firstRow = doc.querySelector('tr[class^="tros"]');
                             if (firstRow) {
-                                // Pega a primeira célula (td)
+                                // (CORRIGIDO) Pega a primeira célula (td)
                                 const osCell = firstRow.querySelectorAll('td')[0];
                                 if (osCell) {
                                     // (CORRIGIDO) Procura o <input> dentro da célula
@@ -1138,6 +1135,7 @@ const modalCSS = `
             btnEmitirOrdem.disabled = true;
         }
 
+        // (CORRIGIDO) Lógica de Navegação
         if (showNavButtons) {
             const btnPrev = modal.querySelector('#hud-nav-prev');
             const btnNext = modal.querySelector('#hud-nav-next');
@@ -1147,6 +1145,7 @@ const modalCSS = `
             const prevLink = prevRow ? prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
             if (prevLink) {
                 btnPrev.addEventListener('click', () => {
+                    currentLinkElement = prevLink; // <-- CORREÇÃO
                     closeModal(true);
                     showOSModalForLink(prevLink);
                 });
@@ -1156,6 +1155,7 @@ const modalCSS = `
             const nextLink = nextRow ? nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
             if (nextLink) {
                 btnNext.addEventListener('click', () => {
+                    currentLinkElement = nextLink; // <-- CORREÇÃO
                     closeModal(true);
                     showOSModalForLink(nextLink);
                 });
