@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ViaRadio (Beta)
 // @namespace    http://tampermonkey.net/
-// @version      3.7
+// @version      3.8
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
@@ -57,12 +57,12 @@
         }
         .hud-modal-header {
             background: linear-gradient(180deg, var(--panel), var(--panel));
-            padding: 12px 16px;
+            padding: 12px 12px;
             cursor: grab;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 0;
             flex-shrink: 0;
         }
         .hud-modal-header:active { cursor: grabbing; }
@@ -73,7 +73,36 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            flex-grow: 1; /* Faz o título ocupar o espaço */
+            text-align: center; /* Centraliza o texto */
         }
+        /* (NOVO) Wrapper para o botão da esquerda */
+    .hud-modal-controls-left {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    /* (NOVO) Botão de Configurações */
+    .hud-modal-settings-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        width: 34px;
+        height: 34px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 8px;
+        color: var(--muted);
+        cursor: pointer;
+        transition: background .18s, color .18s, transform .06s;
+        font-size: 18px;
+        flex-shrink: 0; /* Impede que o botão encolha */
+    }
+    .hud-modal-settings-btn:hover {
+        background: #f8fafc;
+        color: var(--accent); /* Azul no hover */
+        transform: translateY(-1px);
+    }
         .hud-modal-nav {
             margin-left: auto;
             display: flex;
@@ -390,6 +419,52 @@
     document.addEventListener('keydown', (e) => {
         if (e.code === 'NumpadComma' || e.code === 'NumpadDecimal') {
             // Remover essa função
+        }
+    }, false);
+
+    // (NOVO) Atalho: Ctrl+Enter para buscar OS de Visada
+    document.addEventListener('keydown', async (e) => {
+        // Verifica se a tecla pressionada é 'Enter' e se 'Ctrl' está pressionado
+        if (e.key === 'Enter' && e.ctrlKey) {
+            e.preventDefault(); // Impede qualquer ação padrão (como submeter um formulário)
+            console.log('Script: Atalho Ctrl+Enter pressionado.');
+
+            // 1. Encontra o input de busca na página
+            const inputBusca = document.querySelector('input[name="valorbusca"]');
+            if (!inputBusca) {
+                console.error('Script: Input "valorbusca" não encontrado.');
+                return;
+            }
+
+            // 2. Pega o valor (o contrato)
+            const contrato = inputBusca.value;
+            if (!contrato || contrato.trim() === '') {
+                console.log('Script: "valorbusca" está vazio. Atalho ignorado.');
+                return;
+            }
+
+            try {
+                // 3. Chama a nova função para buscar a OS de Visada
+                const osVisada = await fetchVisadaOS(contrato.trim());
+
+                if (osVisada) {
+                    // 4. Se encontrou, constrói a URL e redireciona a página
+                    console.log(`Script: Contrato ${contrato} tem OS de Visada: ${osVisada}. Redirecionando...`);
+
+                    // Esta é a URL base que você forneceu, com 'tipo=3'
+                    const baseUrl = 'https://viaradio.jupiter.com.br/painel.php?adm=atendimentopresencial&np=5&p=1&t=1&session=false&status=-1&impressao=0&mapa=0&informado=0&tipoOS_3=3&tipoOS_4=4&tipoOS_5=5&tipoOS_6=6&tipoOS_7=7&tipoOS_8=8&tipoOS_9=9&tipoOS_10=10&tipoOS_11=11&tipoOS_12=12&tipoOS_13=13&tipoOS_14=14&tipoOS_16=16&tipoOS_17=17&tipoOS_18=18&tipoOS_19=19&tipoOS_28=28&tipoOS_29=29&tipoOS_20=20&tipoOS_21=21&tipoOS_22=22&tipoOS_23=23&tipoOS_24=24&tipoOS_25=25&tipoOS_26=26&tipoOS_27=27&tipoOS_30=30&tipoOS_31=31&tipoOS_32=32&tipoOS_34=34&tipoOS_35=35&tipoOS_36=36&tipoOS_37=37&tipoOS_38=38&tipoOS_39=39&tipoOS_40=40&tipoOS_41=41&tipo=3';
+
+                    // Adiciona o 'valorbusca' com a OS de Visada
+                    const finalUrl = `${baseUrl}&valorbusca=${osVisada}&data-inicial=&data-final=&localidade=0&ordenar=0`;
+
+                    window.location.href = finalUrl;
+                } else {
+                    alert('Script: Nenhuma OS de Visada foi encontrada para este contrato.');
+                }
+            } catch (err) {
+                console.error("Script: Erro ao executar atalho de visada:", err);
+                alert('Script: Ocorreu um erro ao buscar a OS de Visada.');
+            }
         }
     }, false);
 
@@ -860,6 +935,9 @@
 
         modal.innerHTML = `
             <div class="hud-modal-header">
+                <div class="hud-modal-controls-left">
+                    <button id="hud-modal-settings-btn" class="hud-modal-settings-btn" title="Configurações">&#9881;</button>
+                </div>
                 <span id="hud-modal-title" title="${titleText}">${titleText}</span>
                 <div class="hud-modal-nav">
                     <button id="hud-modal-close-btn" class="hud-modal-close-btn" title="Fechar (Esc)">×</button>
@@ -1041,6 +1119,13 @@
             modal.querySelector('.hud-map-toggle').style.display = 'none';
         }
 
+        const btnSettings = modal.querySelector('#hud-modal-settings-btn');
+        btnSettings.addEventListener('click', () => {
+            console.log('Botão de Configurações clicado!');
+            alert('Botão de Configurações clicado! (Funcionalidade a ser adicionada)');
+            // Aqui podemos abrir um segundo modal de configurações no futuro
+        });
+
         const closeModal = (isNavigating = false) => {
             modal.remove();
             if (!isNavigating) {
@@ -1175,8 +1260,51 @@
         });
     } // Fim do if (atendimentopresencial)
 
-    // (NOTA) A lógica 'else if' para 'atendimentoportelefone' foi removida
-    // pois o script principal agora corre em ambas as páginas, e o botão
-    // 'Editar Mapa' é simplesmente desabilitado na página 'telefone'.
+    /**
+     * (CORRIGIDO) 8. Busca a OS de Visada de um Contrato
+     */
+    function fetchVisadaOS(contrato) {
+        if (!contrato) return Promise.resolve(null);
+
+        const url = `https://viaradio.jupiter.com.br/json/pegar_contrato_id.php?contrato=${contrato}`;
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Tampermonkey)', 'Referer': window.location.href },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 400) {
+                        try {
+                            const data = JSON.parse(response.responseText);
+
+                            // (CORRIGIDO) A API retorna um objeto, não um array.
+                            if (data && data.visada) {
+                                console.log(`Script: 'visada' encontrada: ${data.visada}`);
+                                resolve(data.visada);
+                            } else {
+                                console.error("Script: 'visada' não encontrada no JSON.", data);
+                                resolve(null);
+                            }
+                        } catch (e) {
+                            console.error("Script: Falha ao analisar JSON da visada.", e);
+                            resolve(null);
+                        }
+                    } else {
+                        console.error(`Script: Erro de Rede Visada: ${response.status}.`);
+                        resolve(null);
+                    }
+                },
+                onerror: (err) => {
+                    console.error("Script: Erro de Rede Visada (GM_xmlhttpRequest).", err);
+                    resolve(null);
+                },
+                ontimeout: () => {
+                    console.error("Script: Timeout da Visada.");
+                    resolve(null);
+                }
+            });
+        });
+    }
 
 })();
