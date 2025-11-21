@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ViaRadio (Beta)
+// @name         ViaRadio - Mapas
 // @namespace    http://tampermonkey.net/
-// @version      3.8
+// @version      4.0
 // @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
 // @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
@@ -17,13 +17,13 @@
 
     const currentPageUrl = window.location.href;
 
-    // (NOVA VERIFICAÇÃO) Só executa o script principal nestas duas páginas
+    // Só executa o script principal nestas duas páginas
     if (!currentPageUrl.includes('adm=atendimentopresencial') && !currentPageUrl.includes('adm=atendimentoportelefone')) {
         console.log('Script: Página não é Presencial nem Telefone. Script inativo.');
         return;
     }
 
-    /* --- Estilos minimalistas e claros para o visualizador de OS --- */
+    // Estilos
     const modalCSS = `
         :root{
             --bg: #fbfbfb;
@@ -76,14 +76,13 @@
             flex-grow: 1; /* Faz o título ocupar o espaço */
             text-align: center; /* Centraliza o texto */
         }
-        /* (NOVO) Wrapper para o botão da esquerda */
-    .hud-modal-controls-left {
-        display: flex;
-        align-items: center;
-        flex-shrink: 0;
-    }
+        .hud-modal-controls-left {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
 
-    /* (NOVO) Botão de Configurações */
+    // Botão de Configurações (Em desenvolvimento...)
     .hud-modal-settings-btn {
         background: transparent;
         border: 1px solid transparent;
@@ -1191,9 +1190,9 @@
 
                     closeModal(false);
 
-                    setTimeout(() => {
-                        checkbox.checked = false;
-                    }, 500);
+                    //setTimeout(() => {
+                    //    checkbox.checked = false;
+                    //}, 500);
 
                 } catch (e) {
                     console.error("Erro ao tentar chamar uploadMapa:", e);
