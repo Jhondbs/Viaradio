@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ViaRadio - Mapas
 // @namespace    http://tampermonkey.net/
-// @version      4.0
-// @description  Aperte Numpad, (Vírgula) para buscar OS. Interceta cliques de 'retornarMapaOrdemDeServico' para exibir a imagem e dados. Layout minimalista claro.
+// @version      5.0
+// @description  Hud para visualização de informações.
 // @author       Jhon (Modificado por Parceiro de Programacao)
 // @match        *://viaradio.jupiter.com.br/*
 // @grant        GM_xmlhttpRequest
@@ -12,7 +12,7 @@
 // @updateURL https://github.com/Jhondbs/Viaradio/raw/refs/heads/main/ViaRadio%20-%20Buscador%20R%C3%A1pido%20de%20OS%20(est%C3%A1vel)-2.3.user.js
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     const currentPageUrl = window.location.href;
@@ -451,7 +451,7 @@
                     console.log(`Script: Contrato ${contrato} tem OS de Visada: ${osVisada}. Redirecionando...`);
 
                     // Esta é a URL base que você forneceu, com 'tipo=3'
-                    const baseUrl = 'https://viaradio.jupiter.com.br/painel.php?adm=atendimentopresencial&np=5&p=1&t=1&session=false&status=-1&impressao=0&mapa=0&informado=0&tipoOS_3=3&tipoOS_4=4&tipoOS_5=5&tipoOS_6=6&tipoOS_7=7&tipoOS_8=8&tipoOS_9=9&tipoOS_10=10&tipoOS_11=11&tipoOS_12=12&tipoOS_13=13&tipoOS_14=14&tipoOS_16=16&tipoOS_17=17&tipoOS_18=18&tipoOS_19=19&tipoOS_28=28&tipoOS_29=29&tipoOS_20=20&tipoOS_21=21&tipoOS_22=22&tipoOS_23=23&tipoOS_24=24&tipoOS_25=25&tipoOS_26=26&tipoOS_27=27&tipoOS_30=30&tipoOS_31=31&tipoOS_32=32&tipoOS_34=34&tipoOS_35=35&tipoOS_36=36&tipoOS_37=37&tipoOS_38=38&tipoOS_39=39&tipoOS_40=40&tipoOS_41=41&tipo=3';
+                    const baseUrl = 'https://viaradio.jupiter.com.br/painel.php?adm=atendimentopresencial&np=100&p=1&t=1&session=false&status=-1&impressao=0&mapa=0&informado=0&tipoOS_3=3&tipoOS_4=4&tipoOS_5=5&tipoOS_6=6&tipoOS_7=7&tipoOS_8=8&tipoOS_9=9&tipoOS_10=10&tipoOS_11=11&tipoOS_12=12&tipoOS_13=13&tipoOS_14=14&tipoOS_16=16&tipoOS_17=17&tipoOS_18=18&tipoOS_19=19&tipoOS_28=28&tipoOS_29=29&tipoOS_20=20&tipoOS_21=21&tipoOS_22=22&tipoOS_23=23&tipoOS_24=24&tipoOS_25=25&tipoOS_26=26&tipoOS_27=27&tipoOS_30=30&tipoOS_31=31&tipoOS_32=32&tipoOS_34=34&tipoOS_35=35&tipoOS_36=36&tipoOS_37=37&tipoOS_38=38&tipoOS_39=39&tipoOS_40=40&tipoOS_41=41&tipo=3';
 
                     // Adiciona o 'valorbusca' com a OS de Visada
                     const finalUrl = `${baseUrl}&valorbusca=${osVisada}&data-inicial=&data-final=&localidade=0&ordenar=0`;
@@ -505,8 +505,8 @@
             const [jsonData, redeRadacct] = await Promise.all([osDataPromise, redePromise]);
 
             if (!jsonData) {
-                 console.error("Nenhuma informação JSON encontrada para esta OS.");
-                 return;
+                console.error("Nenhuma informação JSON encontrada para esta OS.");
+                return;
             }
 
             // --- PASSO 2: Lógica de Decisão (Mudança ou Instalação) ---
@@ -829,7 +829,7 @@
             const lat = atributos.latitude;
             const lng = atributos.longitude;
             if (lat && lng) return { lat: lat, lon: lng };
-        } catch (e) {}
+        } catch (e) { }
         return null;
     }
 
@@ -842,12 +842,12 @@
                 link = link.replace(/https?:\/\/http/i, 'http');
                 return link;
             }
-        } catch (e) {}
+        } catch (e) { }
         return null;
     }
 
-    function showToast() {}
-    function removeToast() {}
+    function showToast() { }
+    function removeToast() { }
 
     function createImageModal(base64Image, osNumber, jsonData, jsonDataInstalacao, numeroCaixa, redeRadacct, showNavButtons = false, locationData, observacaoInstalacao, anexos = []) {
         const oldModal = document.getElementById('hud-os-image-modal');
@@ -893,7 +893,7 @@
                         redeMapa = partesRede[0].trim() || descRede;
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         let caixaInstalacao = "N/D";
@@ -903,7 +903,7 @@
                 if (dadosMapaInst.terminalSelecionado) {
                     caixaInstalacao = dadosMapaInst.terminalSelecionado.replace(/PT/i, '').trim();
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         const modal = document.createElement('div');
@@ -1111,7 +1111,7 @@
             btnToggleInstalacao.disabled = true;
         }
         if (!dataStore.anexos.images || dataStore.anexos.images.length === 0) {
-             btnToggleAnexos.disabled = true;
+            btnToggleAnexos.disabled = true;
         }
 
         if (!showNavButtons) {
@@ -1142,7 +1142,7 @@
             copyBtn.addEventListener('click', () => {
                 GM_setClipboard(textToCopy);
                 copyBtn.textContent = 'Copiado!';
-                setTimeout(()=> copyBtn.textContent = 'Copiar Localização', 800);
+                setTimeout(() => copyBtn.textContent = 'Copiar Localização', 800);
             });
         } else {
             copyBtn.textContent = 'N/D';
@@ -1209,10 +1209,45 @@
         if (showNavButtons) {
             const btnPrev = modal.querySelector('#hud-nav-prev');
             const btnNext = modal.querySelector('#hud-nav-next');
+
+            // Função auxiliar para encontrar a linha anterior/próxima lidando com múltiplos tbodys
+            const findAdjacentRow = (row, direction) => {
+                if (!row) return null;
+
+                // Tenta irmão direto (caso antigo: todas as TRs no mesmo tbody)
+                let sibling = direction === 'prev' ? row.previousElementSibling : row.nextElementSibling;
+                if (sibling && sibling.tagName === 'TR') return sibling;
+
+                // Tenta navegar entre tbodys (caso novo: cada TR em um tbody separado)
+                const parent = row.parentElement;
+                if (parent && parent.tagName === 'TBODY') {
+                    const adjacentTbody = direction === 'prev' ? parent.previousElementSibling : parent.nextElementSibling;
+                    if (adjacentTbody && adjacentTbody.tagName === 'TBODY') {
+                        return adjacentTbody.querySelector('tr'); // Pega a TR dentro do tbody vizinho
+                    }
+                }
+                return null;
+            };
+
             const currentRow = currentLinkElement ? currentLinkElement.closest('tr') : null;
 
-            const prevRow = currentRow ? currentRow.previousElementSibling : null;
-            const prevLink = prevRow ? prevRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
+            const prevRow = findAdjacentRow(currentRow, 'prev');
+            let prevLink = null;
+            if (prevRow) {
+                // Tenta encontrar o link. Se não achar, continua voltando até achar um ou acabar (limite de 5 tentativas para não travar)
+                let candidateRow = prevRow;
+                let attempts = 0;
+                while (candidateRow && attempts < 50) { // Aumentei o limite para garantir
+                    const link = candidateRow.querySelector('a[href*="retornarMapaOrdemDeServico"]');
+                    if (link) {
+                        prevLink = link;
+                        break;
+                    }
+                    candidateRow = findAdjacentRow(candidateRow, 'prev');
+                    attempts++;
+                }
+            }
+
             if (prevLink) {
                 btnPrev.addEventListener('click', () => {
                     currentLinkElement = prevLink;
@@ -1221,8 +1256,24 @@
                 });
             } else btnPrev.disabled = true;
 
-            const nextRow = currentRow ? currentRow.nextElementSibling : null;
-            const nextLink = nextRow ? nextRow.querySelector('a[href*="retornarMapaOrdemDeServico"]') : null;
+
+            const nextRow = findAdjacentRow(currentRow, 'next');
+            let nextLink = null;
+            if (nextRow) {
+                // Mesma busca recursiva para o próximo
+                let candidateRow = nextRow;
+                let attempts = 0;
+                while (candidateRow && attempts < 50) {
+                    const link = candidateRow.querySelector('a[href*="retornarMapaOrdemDeServico"]');
+                    if (link) {
+                        nextLink = link;
+                        break;
+                    }
+                    candidateRow = findAdjacentRow(candidateRow, 'next');
+                    attempts++;
+                }
+            }
+
             if (nextLink) {
                 btnNext.addEventListener('click', () => {
                     currentLinkElement = nextLink;
@@ -1231,6 +1282,7 @@
                 });
             } else btnNext.disabled = true;
         }
+
 
         const header = modal.querySelector('.hud-modal-header');
         let isDragging = false;
